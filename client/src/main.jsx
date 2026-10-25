@@ -193,11 +193,11 @@ async function submit(event) {
         <p>Only the name is required. Customers with the same name are kept as separate records.</p>
         <form onSubmit={submit}>
           <label htmlFor="name">Full name <span aria-hidden="true">*</span></label>
-          <input id="name" required maxLength="150" value={form.fullName} onChange={e => setForm({ ...form, fullName: e.target.value })} placeholder="e.g. Sample Customer" />
+          <input id="name" required maxLength="120" value={form.fullName} onChange={e => setForm({ ...form, fullName: e.target.value })} placeholder="e.g. Sample Customer" />
           <label htmlFor="phone">Phone (optional)</label>
           <input id="phone" maxLength="30" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="Phone number" />
           <label htmlFor="email">Email (optional)</label>
-          <input id="email" type="email" maxLength="255" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="name@example.com" />
+          <input id="email" type="email" maxLength="254" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="name@example.com" />
           {error && <p role="alert" className="message error">{error}</p>}
           {success && <p role="status" className="message success">{success}</p>}
           <button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Register customer'}</button>
