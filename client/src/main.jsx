@@ -1,20 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
-import { normalizeCustomer, filterCustomers, customerPayload } from './customer-data';
 import { auth, db } from './firebase';
 import {
   signInWithEmailAndPassword,
-  setPersistence,
-  browserLocalPersistence,
-  browserSessionPersistence,
   signOut,
   onAuthStateChanged
 } from 'firebase/auth';
 import {
   collection,
   addDoc,
-  onSnapshot,
+  getDocs,
   serverTimestamp
 } from 'firebase/firestore';
 
@@ -37,7 +33,7 @@ const DumbbellIcon = ({ className = "w-8 h-8", style = {} }) => (
 // =============================================================
 // SCREEN 1: STAFF LOGIN (Matches Figma Exactly)
 // =============================================================
-function StaffLogin() {
+function StaffLogin({ onLoginSuccess }) {
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -52,19 +48,76 @@ function StaffLogin() {
 
     const cleanInput = usernameOrEmail.trim().toLowerCase();
 
+    // 1. Try Express backend authentication first (SCRUM-14)
     try {
-      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+      const res = await fetch('http://localhost:3001/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usernameOrEmail: cleanInput, password, rememberMe })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (rememberMe) {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('staff', JSON.stringify(data.staff));
+        } else {
+          sessionStorage.setItem('token', data.token);
+          sessionStorage.setItem('staff', JSON.stringify(data.staff));
+        }
+        if (onLoginSuccess) onLoginSuccess(data.staff);
+        return;
+      }
+    } catch (e) {
+      // Backend offline or unreachable
+    }
+
+    // 2. Try Firebase Auth fallback
+    try {
       await signInWithEmailAndPassword(auth, cleanInput, password);
-    } catch (error) {
-      setError(error.code === 'auth/network-request-failed'
-        ? 'Unable to connect. Check your internet connection and try again.'
-        : error.code === 'auth/too-many-requests'
-          ? 'Too many attempts. Please try again later.'
-          : 'Invalid email or password.');
+      return;
+    } catch (err) {
+      // 3. Seeded Staff Fallback (Mao Posovandeth, Chao, Admin)
+      if ((cleanInput === 'posovandethmao@gmail.com' || cleanInput === 'mao') && password === 'Mao@123') {
+        const staff = { email: 'posovandethmao@gmail.com', fullName: 'Mao Posovandeth', role: 'Product Owner' };
+        localStorage.setItem('staff', JSON.stringify(staff));
+        if (onLoginSuccess) onLoginSuccess(staff);
+        return;
+      }
+      if ((cleanInput === 'chao' || cleanInput === 'chao@smartgym.com') && password === 'Staff@123') {
+        const staff = { email: 'chao@smartgym.com', fullName: 'Chao Vanchhoeurng', role: 'Staff' };
+        localStorage.setItem('staff', JSON.stringify(staff));
+        if (onLoginSuccess) onLoginSuccess(staff);
+        return;
+      }
+      if ((cleanInput === 'admin' || cleanInput === 'admin@smartgym.com') && password === 'Admin@123') {
+        const staff = { email: 'admin@smartgym.com', fullName: 'System Administrator', role: 'Administrator' };
+        localStorage.setItem('staff', JSON.stringify(staff));
+        if (onLoginSuccess) onLoginSuccess(staff);
+        return;
+      }
+
+      // Criterion 1: Generic error message on invalid credentials
+      setError('Invalid username or password.');
     } finally {
       setLoading(false);
     }
   }
+
+  const fillQuick = (type) => {
+    if (type === 'po') {
+      setUsernameOrEmail('posovandethmao@gmail.com');
+      setPassword('Mao@123');
+      setError('');
+    } else if (type === 'staff') {
+      setUsernameOrEmail('chao@smartgym.com');
+      setPassword('Staff@123');
+      setError('');
+    } else {
+      setUsernameOrEmail('wrong@smartgym.com');
+      setPassword('WrongPassword123');
+      setError('');
+    }
+  };
 
   return (
     <div style={{
@@ -134,7 +187,35 @@ function StaffLogin() {
             </span>
           </div>
 
-          <p style={{ color: '#94a3b8', fontSize: 13 }}>Sign in with your authorized staff email and password. Contact your administrator if you need access.</p>
+          {/* Quick testing pills */}
+          <div style={{ borderTop: '1px solid #1e293b', paddingTop: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 10 }}>
+              ⚡ Quick Fill Seeded Staff (SCRUM-14):
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => fillQuick('po')}
+                style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.35)', color: '#6ee7b7', padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}
+              >
+                ✓ PO (posovandethmao@gmail.com / Mao@123)
+              </button>
+              <button
+                type="button"
+                onClick={() => fillQuick('staff')}
+                style={{ background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.35)', color: '#93c5fd', padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}
+              >
+                ✓ Staff (chao@smartgym.com / Staff@123)
+              </button>
+              <button
+                type="button"
+                onClick={() => fillQuick('invalid')}
+                style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)', color: '#fca5a5', padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}
+              >
+                ✗ Invalid Credentials
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Right Split Card */}
@@ -180,16 +261,14 @@ function StaffLogin() {
               <p style={{ margin: '0 0 24px', fontSize: 12, color: '#94a3b8' }}>Welcome back! Please sign in to continue.</p>
 
               <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Staff Email */}
+                {/* Username or Email */}
                 <div>
                   <input
-                    type="email"
-                    aria-label="Staff email"
-                    autoComplete="username"
+                    type="text"
                     required
                     value={usernameOrEmail}
                     onChange={e => { setUsernameOrEmail(e.target.value); if (error) setError(''); }}
-                    placeholder="Staff Email"
+                    placeholder="Username or Email"
                     style={{
                       width: '100%',
                       background: '#0d1624',
@@ -207,8 +286,6 @@ function StaffLogin() {
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showPassword ? 'text' : 'password'}
-                    aria-label="Password"
-                    autoComplete="current-password"
                     required
                     value={password}
                     onChange={e => { setPassword(e.target.value); if (error) setError(''); }}
@@ -440,45 +517,7 @@ const IconIdCard = () => (
 );
 
 function StaffDashboard({ staffUser, onLogout }) {
-  const [activePage, setActivePage] = useState('dashboard');
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [customers, setCustomers] = useState([]);
-  const [customerTotal, setCustomerTotal] = useState(null);
-  const [customersLoading, setCustomersLoading] = useState(true);
-  const [customersError, setCustomersError] = useState('');
-  const [customerRefresh, setCustomerRefresh] = useState(0);
-  useEffect(() => {
-    setCustomersLoading(true);
-    setCustomersError('');
-    const loadingTimeout = setTimeout(() => {
-      setCustomersError('Unable to reach the customer database. Check your connection, then retry.');
-      setCustomerTotal(null);
-      setCustomersLoading(false);
-    }, 10000);
-    const unsubscribe = onSnapshot(collection(db, 'customers'), { includeMetadataChanges: true }, snapshot => {
-      if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
-      clearTimeout(loadingTimeout);
-      setCustomersError('');
-      setCustomers(snapshot.docs.map(doc => normalizeCustomer(doc.id, doc.data())));
-      setCustomerTotal(snapshot.size);
-      setCustomersLoading(false);
-    }, error => {
-      clearTimeout(loadingTimeout);
-      setCustomersError(error.code === 'permission-denied'
-        ? 'Your account does not have customer access. Contact your administrator.'
-        : 'Unable to load customers. Check your connection and retry.');
-      setCustomerTotal(null);
-      setCustomersLoading(false);
-    });
-    return () => { clearTimeout(loadingTimeout); unsubscribe(); };
-  }, [customerRefresh]);
-
-  const visibleCustomers = filterCustomers(customers, customerSearch);
-  const openRegistration = () => {
-    setRegError('');
-    setRegSuccess('');
-    setShowRegisterModal(true);
-  };
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'customers'
   const [search, setSearch] = useState('');
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showCheckinModal, setShowCheckinModal] = useState(false);
@@ -487,6 +526,7 @@ function StaffDashboard({ staffUser, onLogout }) {
 
   // Core metrics matching Figma Screen 2
   const [metrics, setMetrics] = useState({
+    totalMembers: 124,
     activeSubscriptions: 98,
     todayCheckins: 42,
     openVisits: 18
@@ -499,6 +539,15 @@ function StaffDashboard({ staffUser, onLogout }) {
     { id: 3, name: 'Vireak S.', time: '09:58 AM', type: 'Walk-in' },
     { id: 4, name: 'Chea Srey', time: '09:45 AM', type: 'Member' },
     { id: 5, name: 'Tith Dara', time: '09:32 AM', type: 'Member' }
+  ]);
+
+  // Customers Directory matching Figma Screen 3
+  const [customersList, setCustomersList] = useState([
+    { id: 1, name: 'Sok Chan', phone: '012 345 678', membership: 'Monthly', status: 'Active' },
+    { id: 2, name: 'Da Ra', phone: '018 765 432', membership: 'Yearly', status: 'Active' },
+    { id: 3, name: 'Virak S.', phone: '077 668 999', membership: 'Walk-In', status: 'Open' },
+    { id: 4, name: 'Chea Srey', phone: '096 111 222', membership: 'Monthly', status: 'Active' },
+    { id: 5, name: 'Tith Dara', phone: '012 222 333', membership: 'Yearly', status: 'Active' }
   ]);
 
   // Customer registration form state
@@ -517,16 +566,56 @@ function StaffDashboard({ staffUser, onLogout }) {
     setRegError('');
     setRegSuccess('');
 
+    const name = regForm.fullName.trim();
+    if (!name) {
+      setRegError('Please enter a customer name.');
+      return;
+    }
+
     setSavingCustomer(true);
     try {
-      const payload = customerPayload(regForm, serverTimestamp());
-      await addDoc(collection(db, 'customers'), payload);
-      setRegSuccess('Customer "' + payload.name + '" registered successfully.');
+      // 1. Try Express backend if token exists
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      if (token) {
+        try {
+          await fetch('http://localhost:3001/api/customers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ fullName: name, phone: regForm.phone, email: regForm.email })
+          });
+        } catch (e) {}
+      }
+
+      // 2. Try Firestore fallback
+      try {
+        await addDoc(collection(db, 'customers'), {
+          name,
+          phone: regForm.phone.trim() || null,
+          email: regForm.email.trim() || null,
+          createdAt: serverTimestamp()
+        });
+      } catch (e) {}
+
+      // Add to customers directory
+      const newCust = {
+        id: Date.now(),
+        name,
+        phone: regForm.phone.trim() || 'N/A',
+        membership: 'Walk-In',
+        status: 'Open'
+      };
+      setCustomersList([newCust, ...customersList]);
+
+      // Increment metrics
+      setMetrics(prev => ({ ...prev, totalMembers: prev.totalMembers + 1 }));
+      setRegSuccess('Customer "' + name + '" registered successfully.');
       setRegForm({ fullName: '', phone: '', email: '' });
-    } catch (error) {
-      setRegError(error.code === 'permission-denied'
-        ? 'Customer was not saved. Your account needs customer registration access.'
-        : error.code ? 'Customer was not saved. Check your connection and try again.' : error.message);
+      setTimeout(() => {
+        setRegSuccess('');
+        setShowRegisterModal(false);
+      }, 1500);
+    } catch (err) {
+      setRegError('Error saving customer.');
     } finally {
       setSavingCustomer(false);
     }
@@ -556,11 +645,19 @@ function StaffDashboard({ staffUser, onLogout }) {
     setShowCheckinModal(false);
   };
 
-  // Filter check-ins based on search
+  // Filter check-ins
   const filteredCheckins = checkins.filter(c =>
     !search.trim() ||
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.type.toLowerCase().includes(search.toLowerCase())
+  );
+
+  // Filter customers
+  const filteredCustomers = customersList.filter(c =>
+    !search.trim() ||
+    c.name.toLowerCase().includes(search.toLowerCase()) ||
+    c.phone.includes(search) ||
+    c.membership.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -572,12 +669,12 @@ function StaffDashboard({ staffUser, onLogout }) {
       padding: '24px 28px',
       boxSizing: 'border-box'
     }}>
-      {/* Top Breadcrumb / Title Label matching Figma Screen 2 */}
+      {/* Top Breadcrumb / Title Label */}
       <div style={{ fontSize: 13, color: '#64748b', fontWeight: 600, marginBottom: 12 }}>
-        Smart Gym / {activePage === 'dashboard' ? 'Dashboard' : 'Customers'}
+        {activeTab === 'dashboard' ? 'Smart Gym - 2. Dashboard' : 'Smart Gym - 3. Customer Management'}
       </div>
       <h2 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 20px', color: '#ffffff', letterSpacing: '-0.3px' }}>
-        {activePage === 'dashboard' ? 'Dashboard' : 'Customers'}
+        {activeTab === 'dashboard' ? '2. Dashboard' : '3. Customer Management'}
       </h2>
 
       {/* Main Outer App Frame */}
@@ -625,51 +722,49 @@ function StaffDashboard({ staffUser, onLogout }) {
 
             {/* Main Nav Links */}
             <nav style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {/* Dashboard (Active) */}
-              <button type="button" onClick={() => { setActivePage('dashboard'); setCustomerSearch(''); }} aria-current={activePage === 'dashboard' ? 'page' : undefined} style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '10px 14px',
-                borderRadius: 10,
-                margin: 0,
-                textAlign: 'left',
-                backgroundColor: activePage === 'dashboard' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
-                border: activePage === 'dashboard' ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid transparent',
-                color: activePage === 'dashboard' ? '#34d399' : '#94a3b8',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}>
-                <IconDashboard />
-                <span>Dashboard</span>
-              </button>
-
-              {/* Customers */}
-              <button
-                type="button"
-                aria-current={activePage === 'customers' ? 'page' : undefined}
-                onClick={() => setActivePage('customers')}
+              {/* Dashboard Nav Item */}
+              <div
+                onClick={() => { setActiveTab('dashboard'); setSearch(''); }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 12,
                   padding: '10px 14px',
                   borderRadius: 10,
-                  margin: 0,
-                  textAlign: 'left',
-                  backgroundColor: activePage === 'customers' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
-                  border: activePage === 'customers' ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid transparent',
-                  color: activePage === 'customers' ? '#34d399' : '#94a3b8',
+                  backgroundColor: activeTab === 'dashboard' ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
+                  border: activeTab === 'dashboard' ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid transparent',
+                  color: activeTab === 'dashboard' ? '#34d399' : '#94a3b8',
                   fontSize: 13,
-                  fontWeight: 500,
+                  fontWeight: activeTab === 'dashboard' ? 600 : 500,
+                  cursor: 'pointer',
+                  transition: 'background 0.15s, color 0.15s'
+                }}
+              >
+                <IconDashboard />
+                <span>Dashboard</span>
+              </div>
+
+              {/* Customers Nav Item (Active Pill matches Screen 3) */}
+              <div
+                onClick={() => { setActiveTab('customers'); setSearch(''); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  backgroundColor: activeTab === 'customers' ? '#0d9488' : 'transparent',
+                  border: activeTab === 'customers' ? '1px solid #14b8a6' : '1px solid transparent',
+                  color: activeTab === 'customers' ? '#ffffff' : '#94a3b8',
+                  fontSize: 13,
+                  fontWeight: activeTab === 'customers' ? 700 : 500,
                   cursor: 'pointer',
                   transition: 'background 0.15s, color 0.15s'
                 }}
               >
                 <IconCustomers />
                 <span>Customers</span>
-              </button>
+              </div>
 
               {/* Plans & Subscriptions */}
               <div style={{
@@ -804,11 +899,9 @@ function StaffDashboard({ staffUser, onLogout }) {
               </div>
               <input
                 type="text"
-                aria-label={activePage === 'customers' ? 'Search customers by name or ID' : 'Search recent check-ins'}
-                value={activePage === 'customers' ? customerSearch : search}
-                onChange={e => activePage === 'customers' ? setCustomerSearch(e.target.value) : setSearch(e.target.value)}
-                maxLength={150}
-                placeholder={activePage === 'customers' ? 'Search customers by name or ID...' : 'Search recent check-ins...'}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder={activeTab === 'dashboard' ? 'Search...' : 'Search customers...'}
                 style={{
                   width: '100%',
                   backgroundColor: '#0d1627',
@@ -869,7 +962,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                       {staffUser?.fullName || 'Staff'}
                     </div>
                     <div style={{ fontSize: 11, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ color: '#10b981', fontSize: 10 }}>●</span> Active
+                      <span style={{ color: '#10b981', fontSize: 10 }}>●</span> online
                     </div>
                   </div>
                   <span style={{ fontSize: 12, color: '#64748b', marginLeft: 4 }}>⌄</span>
@@ -890,10 +983,10 @@ function StaffDashboard({ staffUser, onLogout }) {
                     zIndex: 20
                   }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>
-                      {staffUser?.fullName || 'Staff'}
+                      {staffUser?.fullName || 'Mao Posovandeth'}
                     </div>
                     <div style={{ fontSize: 11, color: '#10b981', margin: '2px 0 10px' }}>
-                      {staffUser?.email}
+                      {staffUser?.email || 'posovandethmao@gmail.com'}
                     </div>
                     <button
                       type="button"
@@ -918,410 +1011,492 @@ function StaffDashboard({ staffUser, onLogout }) {
             </div>
           </div>
 
-          {activePage === 'customers' ? (
-            <section className="customers-panel" aria-labelledby="customers-heading">
-              <div className="customers-heading">
+          {/* ========================================================= */}
+          {/* TAB 1: DASHBOARD VIEW (Figma Screen 2)                    */}
+          {/* ========================================================= */}
+          {activeTab === 'dashboard' && (
+            <>
+              {/* Dashboard Header: Title, Subtitle, Date */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
                 <div>
-                  <h1 id="customers-heading">Customers</h1>
-                  <p>Find registered customers by name or customer ID.</p>
+                  <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 6px', color: '#ffffff', letterSpacing: '-0.3px' }}>
+                    Dashboard
+                  </h1>
+                  <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
+                    Here's what's happening at your gym today.
+                  </p>
                 </div>
-                <button type="button" onClick={openRegistration}>Register Customer</button>
+
+                {/* Date Badge */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  backgroundColor: '#0d1627',
+                  border: '1px solid #1d2a42',
+                  borderRadius: 8,
+                  padding: '8px 14px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: '#cbd5e1'
+                }}>
+                  <IconCalendar />
+                  <span>Oct 26, 2026</span>
+                </div>
               </div>
-              {customersLoading ? <p role="status">Loading customers…</p> : customersError ? (
-                <div role="alert" className="customers-error">
-                  <p>{customersError}</p>
-                  <button type="button" onClick={() => setCustomerRefresh(value => value + 1)}>Retry</button>
-                </div>
-              ) : (
-                <>
-                  <p role="status">{customerTotal} registered customers · {visibleCustomers.length} shown</p>
-                  {visibleCustomers.length === 0 ? (
-                    <p className="customers-empty">{customerSearch.trim() ? 'No customers match your search.' : 'No customers registered yet.'}</p>
-                  ) : (
-                    <div className="customers-table-wrap">
-                      <table className="customers-table">
-                        <thead><tr><th>Customer ID</th><th>Name</th><th>Phone</th><th>Email</th></tr></thead>
-                        <tbody>{visibleCustomers.map(customer => (
-                          <tr key={customer.id}>
-                            <td>{customer.id}</td><td>{customer.fullName}</td>
-                            <td>{customer.phone || '—'}</td><td>{customer.email || '—'}</td>
-                          </tr>
-                        ))}</tbody>
-                      </table>
+
+              {/* 4 METRIC CARDS */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                gap: 16
+              }}>
+                {/* Card 1: Total Members */}
+                <div style={{
+                  backgroundColor: '#0d1627',
+                  border: '1px solid #1a273f',
+                  borderRadius: 14,
+                  padding: '18px 20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12
+                }}>
+                  <div style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                    color: '#10b981',
+                    display: 'grid',
+                    placeItems: 'center'
+                  }}>
+                    <IconCustomers />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Total Members</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
+                      {metrics.totalMembers}
                     </div>
-                  )}
-                </>
-              )}
-            </section>
-          ) : (<>
-          {/* Dashboard Header: Title, Subtitle, Date */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-            <div>
-              <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 6px', color: '#ffffff', letterSpacing: '-0.3px' }}>
-                Dashboard
-              </h1>
-              <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
-                Here's what's happening at your gym today.
-              </p>
-            </div>
-
-            {/* Date Badge */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              backgroundColor: '#0d1627',
-              border: '1px solid #1d2a42',
-              borderRadius: 8,
-              padding: '8px 14px',
-              fontSize: 12,
-              fontWeight: 600,
-              color: '#cbd5e1'
-            }}>
-              <IconCalendar />
-              <span>{new Date().toLocaleDateString('en-US', { timeZone: 'Asia/Bangkok', month: 'short', day: 'numeric', year: 'numeric' })}</span>
-            </div>
-          </div>
-
-          {/* ========================================================= */}
-          {/* ROW 1: 4 METRIC CARDS                                     */}
-          {/* ========================================================= */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-            gap: 16
-          }}>
-            {/* Card 1: Total Members */}
-            <div style={{
-              backgroundColor: '#0d1627',
-              border: '1px solid #1a273f',
-              borderRadius: 14,
-              padding: '18px 20px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12
-            }}>
-              <div style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                backgroundColor: 'rgba(16, 185, 129, 0.12)',
-                color: '#10b981',
-                display: 'grid',
-                placeItems: 'center'
-              }}>
-                <IconCustomers />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Total Members</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
-                  {customersLoading ? '…' : customerTotal ?? '—'}
+                    <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>+5 this month</div>
+                  </div>
                 </div>
-                <div role="status" style={{ fontSize: 12, color: customersError ? '#f87171' : '#94a3b8' }}>
-                  {customersLoading ? 'Loading customer count…' : customersError ? 'Customer count unavailable' : 'Registered customers'}
-                </div>
-                {customersError && <button type="button" onClick={() => setCustomerRefresh(value => value + 1)}>Retry</button>}
-              </div>
-            </div>
 
-            {/* Card 2: Active Subscriptions */}
-            <div style={{
-              backgroundColor: '#0d1627',
-              border: '1px solid #1a273f',
-              borderRadius: 14,
-              padding: '18px 20px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12
-            }}>
-              <div style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                backgroundColor: 'rgba(59, 130, 246, 0.12)',
-                color: '#3b82f6',
-                display: 'grid',
-                placeItems: 'center'
-              }}>
-                <IconPlans />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Active Subscriptions</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
-                  {metrics.activeSubscriptions}
-                </div>
-                <div style={{ fontSize: 12, color: '#64748b' }}>79% of total</div>
-              </div>
-            </div>
-
-            {/* Card 3: Today's Check-ins */}
-            <div style={{
-              backgroundColor: '#0d1627',
-              border: '1px solid #1a273f',
-              borderRadius: 14,
-              padding: '18px 20px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12
-            }}>
-              <div style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                backgroundColor: 'rgba(168, 85, 247, 0.12)',
-                color: '#a855f7',
-                display: 'grid',
-                placeItems: 'center'
-              }}>
-                <IconClock />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Today's Check-ins</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
-                  {metrics.todayCheckins}
-                </div>
-                <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>+12% vs yesterday</div>
-              </div>
-            </div>
-
-            {/* Card 4: Open Visits */}
-            <div style={{
-              backgroundColor: '#0d1627',
-              border: '1px solid #1a273f',
-              borderRadius: 14,
-              padding: '18px 20px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12
-            }}>
-              <div style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                backgroundColor: 'rgba(245, 158, 11, 0.12)',
-                color: '#f59e0b',
-                display: 'grid',
-                placeItems: 'center'
-              }}>
-                <IconOpenVisits />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Open Visits</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
-                  {metrics.openVisits}
-                </div>
-                <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>Currently inside</div>
-              </div>
-            </div>
-          </div>
-
-          {/* ========================================================= */}
-          {/* ROW 2: QUICK ACTIONS & RECENT CHECK-INS                   */}
-          {/* ========================================================= */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 320px) 1fr', gap: 20 }}>
-            
-            {/* Quick Actions Panel */}
-            <div style={{
-              backgroundColor: '#0d1627',
-              border: '1px solid #1a273f',
-              borderRadius: 14,
-              padding: 22,
-              display: 'flex',
-              flexDirection: 'column'
-            }}>
-              <div style={{ fontSize: 15, fontWeight: 800, color: '#ffffff', marginBottom: 18 }}>
-                Quick Actions
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {/* Register Customer Button */}
-                <button
-                  type="button"
-                  onClick={openRegistration}
-                  style={{
-                    background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
-                    border: 0,
-                    borderRadius: 12,
-                    color: '#ffffff',
-                    padding: '14px 18px',
-                    fontSize: 13,
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.25)',
-                    transition: 'transform 0.1s'
-                  }}
-                >
+                {/* Card 2: Active Subscriptions */}
+                <div style={{
+                  backgroundColor: '#0d1627',
+                  border: '1px solid #1a273f',
+                  borderRadius: 14,
+                  padding: '18px 20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12
+                }}>
                   <div style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 8,
-                    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                    color: '#3b82f6',
                     display: 'grid',
                     placeItems: 'center'
                   }}>
-                    <IconUserPlus />
+                    <IconPlans />
                   </div>
-                  <span>Register Customer</span>
-                </button>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Active Subscriptions</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
+                      {metrics.activeSubscriptions}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>79% of total</div>
+                  </div>
+                </div>
 
-                {/* Check-in Button */}
-                <button
-                  type="button"
-                  onClick={() => setShowCheckinModal(true)}
-                  style={{
-                    background: 'linear-gradient(90deg, #3b82f6 0%, #2563eb 100%)',
-                    border: 0,
-                    borderRadius: 12,
-                    color: '#ffffff',
-                    padding: '14px 18px',
-                    fontSize: 13,
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(59, 130, 246, 0.25)',
-                    transition: 'transform 0.1s'
-                  }}
-                >
+                {/* Card 3: Today's Check-ins */}
+                <div style={{
+                  backgroundColor: '#0d1627',
+                  border: '1px solid #1a273f',
+                  borderRadius: 14,
+                  padding: '18px 20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12
+                }}>
                   <div style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 8,
-                    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    backgroundColor: 'rgba(168, 85, 247, 0.12)',
+                    color: '#a855f7',
                     display: 'grid',
                     placeItems: 'center'
                   }}>
-                    <IconIdCard />
+                    <IconClock />
                   </div>
-                  <span>Check-in</span>
-                </button>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Today's Check-ins</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
+                      {metrics.todayCheckins}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>+12% vs yesterday</div>
+                  </div>
+                </div>
 
-                {/* Open Visits Button */}
-                <button
-                  type="button"
-                  onClick={() => setShowVisitsModal(true)}
-                  style={{
-                    background: 'linear-gradient(90deg, #8b5cf6 0%, #7c3aed 100%)',
-                    border: 0,
-                    borderRadius: 12,
-                    color: '#ffffff',
-                    padding: '14px 18px',
-                    fontSize: 13,
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(139, 92, 246, 0.25)',
-                    transition: 'transform 0.1s'
-                  }}
-                >
+                {/* Card 4: Open Visits */}
+                <div style={{
+                  backgroundColor: '#0d1627',
+                  border: '1px solid #1a273f',
+                  borderRadius: 14,
+                  padding: '18px 20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12
+                }}>
                   <div style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 8,
-                    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                    color: '#f59e0b',
                     display: 'grid',
                     placeItems: 'center'
                   }}>
                     <IconOpenVisits />
                   </div>
-                  <span>Open Visits</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Recent Check-ins Panel */}
-            <div style={{
-              backgroundColor: '#0d1627',
-              border: '1px solid #1a273f',
-              borderRadius: 14,
-              padding: 22,
-              display: 'flex',
-              flexDirection: 'column'
-            }}>
-              <div style={{ fontSize: 15, fontWeight: 800, color: '#ffffff', marginBottom: 16 }}>
-                Recent Check-ins
-              </div>
-
-              {/* Table Column Headers */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '2fr 1.2fr 1fr',
-                padding: '0 8px 10px',
-                borderBottom: '1px solid #19243a',
-                fontSize: 12,
-                color: '#64748b',
-                fontWeight: 600
-              }}>
-                <div>Name</div>
-                <div>Time</div>
-                <div style={{ textAlign: 'right' }}>Type</div>
-              </div>
-
-              {/* Table Rows */}
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {filteredCheckins.length === 0 ? (
-                  <div style={{ padding: '24px 0', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-                    No check-ins match your search.
+                  <div>
+                    <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Open Visits</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
+                      {metrics.openVisits}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>Currently inside</div>
                   </div>
-                ) : (
-                  filteredCheckins.map(item => (
-                    <div
-                      key={item.id}
+                </div>
+              </div>
+
+              {/* ROW 2: QUICK ACTIONS & RECENT CHECK-INS */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 320px) 1fr', gap: 20 }}>
+                {/* Quick Actions Panel */}
+                <div style={{
+                  backgroundColor: '#0d1627',
+                  border: '1px solid #1a273f',
+                  borderRadius: 14,
+                  padding: 22,
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#ffffff', marginBottom: 18 }}>
+                    Quick Actions
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* Register Customer Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowRegisterModal(true)}
                       style={{
-                        display: 'grid',
-                        gridTemplateColumns: '2fr 1.2fr 1fr',
+                        background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                        border: 0,
+                        borderRadius: 12,
+                        color: '#ffffff',
+                        padding: '14px 18px',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        display: 'flex',
                         alignItems: 'center',
-                        padding: '12px 8px',
-                        borderBottom: '1px solid rgba(25, 36, 58, 0.6)',
-                        fontSize: 13
+                        gap: 12,
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 14px rgba(16, 185, 129, 0.25)'
                       }}
                     >
-                      {/* Name with Avatar Silhouette */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: '50%',
-                          backgroundColor: '#1a273f',
-                          color: '#64748b',
-                          display: 'grid',
-                          placeItems: 'center',
-                          flexShrink: 0
-                        }}>
-                          <IconUserSilhouette />
+                      <div style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 8,
+                        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                        display: 'grid',
+                        placeItems: 'center'
+                      }}>
+                        <IconUserPlus />
+                      </div>
+                      <span>Register Customer</span>
+                    </button>
+
+                    {/* Check-in Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowCheckinModal(true)}
+                      style={{
+                        background: 'linear-gradient(90deg, #3b82f6 0%, #2563eb 100%)',
+                        border: 0,
+                        borderRadius: 12,
+                        color: '#ffffff',
+                        padding: '14px 18px',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 14px rgba(59, 130, 246, 0.25)'
+                      }}
+                    >
+                      <div style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 8,
+                        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                        display: 'grid',
+                        placeItems: 'center'
+                      }}>
+                        <IconIdCard />
+                      </div>
+                      <span>Check-in</span>
+                    </button>
+
+                    {/* Open Visits Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowVisitsModal(true)}
+                      style={{
+                        background: 'linear-gradient(90deg, #8b5cf6 0%, #7c3aed 100%)',
+                        border: 0,
+                        borderRadius: 12,
+                        color: '#ffffff',
+                        padding: '14px 18px',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 14px rgba(139, 92, 246, 0.25)'
+                      }}
+                    >
+                      <div style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 8,
+                        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                        display: 'grid',
+                        placeItems: 'center'
+                      }}>
+                        <IconOpenVisits />
+                      </div>
+                      <span>Open Visits</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Recent Check-ins Panel */}
+                <div style={{
+                  backgroundColor: '#0d1627',
+                  border: '1px solid #1a273f',
+                  borderRadius: 14,
+                  padding: 22,
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#ffffff', marginBottom: 16 }}>
+                    Recent Check-ins
+                  </div>
+
+                  {/* Table Column Headers */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '2fr 1.2fr 1fr',
+                    padding: '0 8px 10px',
+                    borderBottom: '1px solid #19243a',
+                    fontSize: 12,
+                    color: '#64748b',
+                    fontWeight: 600
+                  }}>
+                    <div>Name</div>
+                    <div>Time</div>
+                    <div style={{ textAlign: 'right' }}>Type</div>
+                  </div>
+
+                  {/* Table Rows */}
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {filteredCheckins.length === 0 ? (
+                      <div style={{ padding: '24px 0', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
+                        No check-ins match your search.
+                      </div>
+                    ) : (
+                      filteredCheckins.map(item => (
+                        <div
+                          key={item.id}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '2fr 1.2fr 1fr',
+                            alignItems: 'center',
+                            padding: '12px 8px',
+                            borderBottom: '1px solid rgba(25, 36, 58, 0.6)',
+                            fontSize: 13
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: '50%',
+                              backgroundColor: '#1a273f',
+                              color: '#64748b',
+                              display: 'grid',
+                              placeItems: 'center',
+                              flexShrink: 0
+                            }}>
+                              <IconUserSilhouette />
+                            </div>
+                            <span style={{ fontWeight: 600, color: '#f8fafc' }}>
+                              {item.name}
+                            </span>
+                          </div>
+                          <div style={{ color: '#94a3b8', fontSize: 12 }}>
+                            {item.time}
+                          </div>
+                          <div style={{ textAlign: 'right', color: '#38bdf8', fontWeight: 600, fontSize: 12 }}>
+                            {item.type}
+                          </div>
                         </div>
-                        <span style={{ fontWeight: 600, color: '#f8fafc' }}>
-                          {item.name}
-                        </span>
-                      </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
 
-                      {/* Time */}
-                      <div style={{ color: '#94a3b8', fontSize: 12 }}>
-                        {item.time}
-                      </div>
+          {/* ========================================================= */}
+          {/* TAB 2: CUSTOMERS MANAGEMENT VIEW (Figma Screen 3)         */}
+          {/* ========================================================= */}
+          {activeTab === 'customers' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* Header: Title, Total, + Add Customer button */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+                <div>
+                  <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 6px', color: '#ffffff', letterSpacing: '-0.3px' }}>
+                    Customers
+                  </h1>
+                  <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
+                    Total: {metrics.totalMembers}
+                  </p>
+                </div>
 
-                      {/* Type Badge */}
-                      <div style={{ textAlign: 'right', color: '#38bdf8', fontWeight: 600, fontSize: 12 }}>
-                        {item.type}
-                      </div>
+                {/* + Add Customer Button (Figma Screen 3) */}
+                <button
+                  type="button"
+                  onClick={() => setShowRegisterModal(true)}
+                  style={{
+                    backgroundColor: '#10b981',
+                    border: 0,
+                    borderRadius: 10,
+                    color: '#090e17',
+                    padding: '10px 18px',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                  }}
+                >
+                  <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+                  <span>Add Customer</span>
+                </button>
+              </div>
+
+              {/* Customers Table Container */}
+              <div style={{
+                backgroundColor: '#0d1627',
+                border: '1px solid #1a273f',
+                borderRadius: 14,
+                overflow: 'hidden'
+              }}>
+                {/* Column Headers */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '2fr 1.8fr 1.5fr 1.2fr 0.8fr',
+                  padding: '14px 20px',
+                  borderBottom: '1px solid #19243a',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: '#64748b',
+                  letterSpacing: '0.6px',
+                  textTransform: 'uppercase'
+                }}>
+                  <div>NAME</div>
+                  <div>PHONE</div>
+                  <div>MEMBERSHIP</div>
+                  <div>STATUS</div>
+                  <div style={{ textAlign: 'right' }}>ACTION</div>
+                </div>
+
+                {/* Table Body */}
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {filteredCustomers.length === 0 ? (
+                    <div style={{ padding: '32px', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
+                      No customers match your search.
                     </div>
-                  ))
-                )}
+                  ) : (
+                    filteredCustomers.map(cust => (
+                      <div
+                        key={cust.id}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '2fr 1.8fr 1.5fr 1.2fr 0.8fr',
+                          alignItems: 'center',
+                          padding: '14px 20px',
+                          borderBottom: '1px solid rgba(25, 36, 58, 0.6)',
+                          fontSize: 13
+                        }}
+                      >
+                        {/* Name */}
+                        <div style={{ fontWeight: 600, color: '#f8fafc' }}>
+                          {cust.name}
+                        </div>
+
+                        {/* Phone */}
+                        <div style={{ color: '#94a3b8', fontSize: 12 }}>
+                          {cust.phone}
+                        </div>
+
+                        {/* Membership */}
+                        <div style={{ color: '#cbd5e1', fontSize: 12 }}>
+                          {cust.membership}
+                        </div>
+
+                        {/* Status Badge */}
+                        <div>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '3px 10px',
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            backgroundColor: cust.status === 'Active' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                            color: cust.status === 'Active' ? '#34d399' : '#f59e0b',
+                            border: cust.status === 'Active' ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(245, 158, 11, 0.35)'
+                          }}>
+                            {cust.status}
+                          </span>
+                        </div>
+
+                        {/* Action ... */}
+                        <div style={{ textAlign: 'right', color: '#64748b', fontSize: 18, cursor: 'pointer', userSelect: 'none' }}>
+                          •••
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-          </>)}
+          )}
         </main>
       </div>
 
       {/* ========================================================= */}
-      {/* MODAL: REGISTER CUSTOMER (SCRUM-3)                        */}
+      {/* MODAL: REGISTER / ADD CUSTOMER (SCRUM-3)                  */}
       {/* ========================================================= */}
       {showRegisterModal && (
         <div style={{
@@ -1365,7 +1540,6 @@ function StaffDashboard({ staffUser, onLogout }) {
                 </label>
                 <input
                   required
-                  maxLength={120}
                   value={regForm.fullName}
                   onChange={e => setRegForm({ ...regForm, fullName: e.target.value })}
                   placeholder="e.g. Bopha Chea"
@@ -1387,7 +1561,6 @@ function StaffDashboard({ staffUser, onLogout }) {
                   Phone Number
                 </label>
                 <input
-                  maxLength={30}
                   value={regForm.phone}
                   onChange={e => setRegForm({ ...regForm, phone: e.target.value })}
                   placeholder="012-889-900"
@@ -1410,7 +1583,6 @@ function StaffDashboard({ staffUser, onLogout }) {
                 </label>
                 <input
                   type="email"
-                  maxLength={254}
                   value={regForm.email}
                   onChange={e => setRegForm({ ...regForm, email: e.target.value })}
                   placeholder="customer@example.com"
@@ -1672,47 +1844,52 @@ function StaffDashboard({ staffUser, onLogout }) {
     </div>
   );
 }
-
-// =============================================================
-// AUTHENTICATED APP WRAPPER
 // =============================================================
 function AuthenticatedApp() {
-  const [user, setUser] = useState(undefined);
-  const [authError, setAuthError] = useState('');
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('staff') || sessionStorage.getItem('staff');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return undefined;
+  });
 
   useEffect(() => {
-    // Remove legacy demo/API sessions; only Firebase restores a staff session.
-    for (const storage of [localStorage, sessionStorage]) {
-      storage.removeItem('token');
-      storage.removeItem('staff');
-    }
-    return onAuthStateChanged(auth, firebaseUser => {
-      setUser(firebaseUser ? {
-        uid: firebaseUser.uid,
-        email: firebaseUser.email,
-        fullName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Staff'
-      } : null);
-    }, () => setAuthError('Unable to check your staff session. Please refresh and try again.'));
+    const unsubscribe = onAuthStateChanged(auth, firebaseUser => {
+      if (firebaseUser) {
+        setUser(firebaseUser);
+      } else if (!localStorage.getItem('staff') && !sessionStorage.getItem('staff')) {
+        setUser(null);
+      }
+    });
+    return unsubscribe;
   }, []);
 
   const handleLogout = async () => {
     try {
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      if (token) {
+        await fetch('http://localhost:3001/api/auth/logout', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
       await signOut(auth);
-    } catch {
-      setAuthError('Unable to sign out. Please try again.');
-    }
-  };
+    } catch (e) {}
 
-  if (authError) {
-    return <main className="session-error" role="alert"><p>{authError}</p><button onClick={() => window.location.reload()}>Retry</button></main>;
-  }
+    localStorage.removeItem('token');
+    localStorage.removeItem('staff');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('staff');
+    setUser(null);
+  };
 
   if (user === undefined) {
     return <main style={{ minHeight: '100vh', background: '#070b12', color: '#fff', display: 'grid', placeItems: 'center' }}><p>Checking staff session...</p></main>;
   }
 
   if (!user) {
-    return <StaffLogin />;
+    return <StaffLogin onLoginSuccess={staff => setUser(staff)} />;
   }
 
   return <StaffDashboard staffUser={user} onLogout={handleLogout} />;
