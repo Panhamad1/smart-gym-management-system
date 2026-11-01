@@ -45,4 +45,4 @@ CREATE TABLE IF NOT EXISTS payments (
 INSERT IGNORE INTO staff (id, username, email, password_hash, full_name, role) VALUES
 ('STAFF-001', 'chao', 'chao@smartgym.com', '$2a$10$wE99Kq4E.6k9xH8J8M8vxeG1c44q34QxH2xXb1c44q34QxH2xXb1e', 'Chao Vanchhoeurng', 'Staff'),
 ('STAFF-002', 'admin', 'admin@smartgym.com', '$2a$10$wE99Kq4E.6k9xH8J8M8vxeG1c44q34QxH2xXb1c44q34QxH2xXb1e', 'System Administrator', 'Administrator'),
-('STAFF-003', 'mao', 'mao@smartgym.com', '$2a$10$wE99Kq4E.6k9xH8J8M8vxeG1c44q34QxH2xXb1c44q34QxH2xXb1e', 'Mao Posovandeth', 'Product Owner');
+('STAFF-003', 'mao', 'posovandethmao@gmail.com', '$2a$10$wE99Kq4E.6k9xH8J8M8vxeG1c44q34QxH2xXb1c44q34QxH2xXb1e', 'Mao Posovandeth', 'Product Owner');

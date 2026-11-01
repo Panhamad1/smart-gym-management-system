@@ -37,7 +37,7 @@ const SEEDED_STAFF = [
   {
     id: 'STAFF-003',
     username: 'mao',
-    email: 'mao@smartgym.com',
+    email: 'posovandethmao@gmail.com',
     password_hash: bcrypt.hashSync('Mao@123', 10),
     full_name: 'Mao Posovandeth',
     role: 'Product Owner'
