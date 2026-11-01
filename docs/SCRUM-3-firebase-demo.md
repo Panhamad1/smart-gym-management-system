@@ -1,5 +1,7 @@
 # SCRUM-3 — Firebase prototype and acceptance verification
 
+> Historical prototype notes. See the root README for the current staff login, customer list, and GitHub Actions deployment setup. Other dashboard metrics remain placeholders; the visit/check-in/payment/checkout workflow is not yet implemented.
+
 ## Current deployed architecture
 - React + Vite frontend deployed on Firebase Hosting: https://smart-gym-team2.web.app
 - Firebase Authentication email/password staff sign-in and sign-out.
