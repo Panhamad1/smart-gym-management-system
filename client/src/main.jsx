@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
-import { normalizeCustomer, registerCustomer } from './customer-data';
+import { normalizeCustomer } from './customer-data';
 import { checkInWalkIn, checkOutWalkIn } from './walk-in-data';
 import { CustomerDirectory } from './customer-directory';
 import { WalkInCheckIn } from './walk-in-check-in';
@@ -434,7 +434,6 @@ function PlannedMetric({ label, icon: Icon, accent, tint, value, status = 'Plann
 
 function StaffDashboard({ staffUser, onLogout }) {
   const [{ tab: activeTab, customer, visit }, setScreen] = useState({ tab: 'dashboard' });
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const [customers, setCustomers] = useState([]);
@@ -468,33 +467,6 @@ function StaffDashboard({ staffUser, onLogout }) {
     });
     return () => { clearTimeout(loadingTimeout); unsubscribe(); };
   }, [customerRefresh]);
-
-  // Customer registration form state
-  const [regForm, setRegForm] = useState({ fullName: '', phone: '', email: '' });
-  const [savingCustomer, setSavingCustomer] = useState(false);
-  const [regSuccess, setRegSuccess] = useState('');
-  const [regError, setRegError] = useState('');
-
-  // Handle register customer (SCRUM-3)
-  const handleRegisterCustomer = async (e) => {
-    e.preventDefault();
-    if (savingCustomer) return;
-    setRegError('');
-    setRegSuccess('');
-
-    setSavingCustomer(true);
-    try {
-      const id = await registerCustomer(db, regForm);
-      setRegSuccess('Customer registered. ID: ' + id);
-      setRegForm({ fullName: '', phone: '', email: '' });
-    } catch (error) {
-      setRegError(error.code === 'permission-denied'
-        ? 'Customer was not saved. Your account needs customer registration access.'
-        : error.code ? 'Customer was not saved. Check your connection and try again.' : error.message);
-    } finally {
-      setSavingCustomer(false);
-    }
-  };
 
   function setActiveTab(tab, selection = {}) {
     setScreen({ tab, ...selection });
@@ -836,14 +808,9 @@ function StaffDashboard({ staffUser, onLogout }) {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {/* Register Customer Button */}
                     <button
                       type="button"
-                      onClick={() => {
-                        setRegError('');
-                        setRegSuccess('');
-                        setShowRegisterModal(true);
-                      }}
+                      onClick={() => setActiveTab('check-in')}
                       style={{
                         background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
                         border: 0,
@@ -869,13 +836,12 @@ function StaffDashboard({ staffUser, onLogout }) {
                       }}>
                         <IconUserPlus />
                       </div>
-                      <span>Register Customer</span>
+                      <span>New walk-in</span>
                     </button>
 
                     <button type="button" className="customer-directory-action" onClick={() => setActiveTab('customers')}>
                       View Customers
                     </button>
-                    <VisitLink icon={IconCheckin} tab="check-in" {...visitNavigation}>Check-in</VisitLink>
                     <VisitLink icon={IconOpenVisits} tab="open-visits" {...visitNavigation}>Open Visits</VisitLink>
                   </div>
                 </div>
@@ -905,7 +871,7 @@ function StaffDashboard({ staffUser, onLogout }) {
               onViewOpenVisits={() => setActiveTab('open-visits')} />
           )}
           {activeTab === 'open-visits' && (
-            <OpenWalkIns result={openVisits} initialVisit={visit} onCheckout={input => checkOutWalkIn(db, staffUser.uid, input)} />
+            <OpenWalkIns db={db} result={openVisits} initialVisit={visit} onCheckout={input => checkOutWalkIn(db, staffUser.uid, input)} />
           )}
           {activeTab === 'payments' && <WalkInPayments db={db} />}
           {activeTab === 'customers' && (
@@ -916,164 +882,6 @@ function StaffDashboard({ staffUser, onLogout }) {
           )}
         </main>
       </div>
-
-      {/* ========================================================= */}
-      {/* MODAL: REGISTER / ADD CUSTOMER (SCRUM-3)                  */}
-      {/* ========================================================= */}
-      {showRegisterModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.75)',
-          backdropFilter: 'blur(4px)',
-          display: 'grid',
-          placeItems: 'center',
-          zIndex: 100,
-          padding: 16
-        }}>
-          <div role="dialog" aria-modal="true" aria-labelledby="customer-form-title" style={{
-            backgroundColor: '#0c1322',
-            border: '1px solid #1e293b',
-            borderRadius: 16,
-            width: '100%',
-            maxWidth: 440,
-            padding: 24,
-            boxShadow: '0 25px 50px rgba(0,0,0,0.6)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div id="customer-form-title" style={{ fontSize: 17, fontWeight: 800, color: '#ffffff' }}>Register New Customer</div>
-              <button
-                type="button"
-                aria-label="Close customer registration"
-                disabled={savingCustomer}
-                onClick={() => setShowRegisterModal(false)}
-                style={{ background: 'transparent', border: 0, color: '#94a3b8', fontSize: 18, cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <p style={{ margin: '0 0 18px', fontSize: 12, color: '#94a3b8' }}>
-              Enter the customer’s name and any contact details.
-            </p>
-
-            <form onSubmit={handleRegisterCustomer} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label htmlFor="customer-fullName" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
-                  Full Name <span style={{ color: '#f87171' }}>*</span>
-                </label>
-                <input
-                  required
-                  maxLength={120}
-                  id="customer-fullName"
-                  value={regForm.fullName}
-                  onChange={e => setRegForm({ ...regForm, fullName: e.target.value })}
-                  placeholder="e.g. Bopha Chea"
-                  style={{
-                    width: '100%',
-                    backgroundColor: '#070d18',
-                    border: '1px solid #1e293b',
-                    borderRadius: 8,
-                    color: '#fff',
-                    padding: '10px 12px',
-                    fontSize: 13,
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="customer-phone" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
-                  Phone Number
-                </label>
-                <input
-                  maxLength={30}
-                  id="customer-phone"
-                  value={regForm.phone}
-                  onChange={e => setRegForm({ ...regForm, phone: e.target.value })}
-                  placeholder="012-889-900"
-                  style={{
-                    width: '100%',
-                    backgroundColor: '#070d18',
-                    border: '1px solid #1e293b',
-                    borderRadius: 8,
-                    color: '#fff',
-                    padding: '10px 12px',
-                    fontSize: 13,
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="customer-email" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  maxLength={254}
-                  id="customer-email"
-                  value={regForm.email}
-                  onChange={e => setRegForm({ ...regForm, email: e.target.value })}
-                  placeholder="customer@example.com"
-                  style={{
-                    width: '100%',
-                    backgroundColor: '#070d18',
-                    border: '1px solid #1e293b',
-                    borderRadius: 8,
-                    color: '#fff',
-                    padding: '10px 12px',
-                    fontSize: 13,
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              {regError && (
-                <div role="alert" style={{ color: '#f87171', fontSize: 12, fontWeight: 600 }}>{regError}</div>
-              )}
-              {regSuccess && (
-                <div role="status" style={{ color: '#34d399', fontSize: 12, fontWeight: 600 }}>{regSuccess}</div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
-                <button
-                  type="button"
-                  disabled={savingCustomer}
-                  onClick={() => setShowRegisterModal(false)}
-                  style={{
-                    backgroundColor: '#1e293b',
-                    border: '1px solid #334155',
-                    color: '#cbd5e1',
-                    borderRadius: 8,
-                    padding: '10px 16px',
-                    fontSize: 13,
-                    cursor: 'pointer'
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingCustomer}
-                  style={{
-                    background: '#10b981',
-                    border: 0,
-                    borderRadius: 8,
-                    color: '#090e17',
-                    padding: '10px 18px',
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  {savingCustomer ? 'Saving...' : 'Register'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
     </div>
   );
