@@ -52,8 +52,8 @@ function RecordList({ result, empty, children }) {
   return <ul className="walk-in-records">{result.records.map(children)}</ul>;
 }
 
-export function OpenWalkIns({ result, onCheckout }) {
-  const [selected, setSelected] = useState(null);
+export function OpenWalkIns({ result, initialVisit, onCheckout }) {
+  const [selected, setSelected] = useState(initialVisit ?? null);
   const [method, setMethod] = useState('');
   const [paymentReceived, setPaymentReceived] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -89,14 +89,6 @@ export function OpenWalkIns({ result, onCheckout }) {
       <h1 id="open-walk-ins-title">Open Visits</h1>
       <p>Walk-in customers currently in the gym.</p>
       {success && <p className="walk-in-success" role="status">{success}</p>}
-      <RecordList result={result} empty="No open walk-in visits.">
-        {visit => (
-          <li key={visit.visitId}>
-            <div><strong>{visit.customerName}</strong><small>Checked in {visitTime(visit.checkedInAt)}</small></div>
-            <button type="button" disabled={saving} onClick={() => chooseVisit(visit)}>Check out</button>
-          </li>
-        )}
-      </RecordList>
       {selected && (
         <form className="walk-in-form" onSubmit={checkout}>
           <h2>Check out {selected.customerName}</h2>
@@ -121,6 +113,14 @@ export function OpenWalkIns({ result, onCheckout }) {
           {error && <p className="walk-in-error" role="alert">{error}</p>}
         </form>
       )}
+      <RecordList result={result} empty="No open walk-in visits.">
+        {visit => (
+          <li key={visit.visitId}>
+            <div><strong>{visit.customerName}</strong><small>Checked in {visitTime(visit.checkedInAt)}</small></div>
+            <button type="button" disabled={saving} onClick={() => chooseVisit(visit)}>Check out</button>
+          </li>
+        )}
+      </RecordList>
     </section>
   );
 }

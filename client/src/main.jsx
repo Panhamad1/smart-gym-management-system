@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
-import { normalizeCustomer, filterCustomers, registerCustomer } from './customer-data';
+import { normalizeCustomer, registerCustomer } from './customer-data';
 import { checkInWalkIn, checkOutWalkIn } from './walk-in-data';
+import { CustomerDirectory } from './customer-directory';
 import { WalkInCheckIn } from './walk-in-check-in';
 import { OpenWalkIns, WalkInPayments, useWalkInRecords, visitTime } from './walk-in-visits';
 import { auth, db } from './firebase';
@@ -375,12 +376,6 @@ const IconLogout = () => (
   </svg>
 );
 
-const IconSearch = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="8" />
-    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-  </svg>
-);
 
 const IconCalendar = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -438,8 +433,7 @@ function PlannedMetric({ label, icon: Icon, accent, tint, value, status = 'Plann
 }
 
 function StaffDashboard({ staffUser, onLogout }) {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [search, setSearch] = useState('');
+  const [{ tab: activeTab, customer, visit }, setScreen] = useState({ tab: 'dashboard' });
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
@@ -502,8 +496,9 @@ function StaffDashboard({ staffUser, onLogout }) {
     }
   };
 
-  const filteredCustomers = filterCustomers(customers, search);
-  const activeCustomers = new Set(openVisits.records?.map(visit => visit.customerId));
+  function setActiveTab(tab, selection = {}) {
+    setScreen({ tab, ...selection });
+  }
   const pageTitle = {
     dashboard: '2. Dashboard', customers: '3. Customer Management',
     'check-in': 'Check-in', 'open-visits': 'Open Visits', payments: 'Payments'
@@ -588,7 +583,7 @@ function StaffDashboard({ staffUser, onLogout }) {
             <nav className="staff-nav" aria-label="Staff navigation" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {/* Dashboard Nav Item */}
               <button type="button" aria-current={activeTab === 'dashboard' ? 'page' : undefined}
-                onClick={() => { setActiveTab('dashboard'); setSearch(''); }}
+                onClick={() => setActiveTab('dashboard')}
                 style={{
                   display: 'flex',
                   textAlign: 'left',
@@ -611,7 +606,7 @@ function StaffDashboard({ staffUser, onLogout }) {
 
               {/* Customers Nav Item (Active Pill matches Screen 3) */}
               <button type="button" aria-current={activeTab === 'customers' ? 'page' : undefined}
-                onClick={() => { setActiveTab('customers'); setSearch(''); }}
+                onClick={() => setActiveTab('customers')}
                 style={{
                   display: 'flex',
                   textAlign: 'left',
@@ -669,43 +664,7 @@ function StaffDashboard({ staffUser, onLogout }) {
         {/* ========================================================= */}
         <main className="staff-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24, overflowY: 'auto' }}>
           
-          {/* Customer search and staff profile */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-            {activeTab === 'customers' ? (
-            <div style={{ position: 'relative', width: 280, maxWidth: '100%' }}>
-              <div style={{
-                position: 'absolute',
-                left: 12,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: '#64748b',
-                display: 'flex',
-                alignItems: 'center'
-              }}>
-                <IconSearch />
-              </div>
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                aria-label="Search by customer name or ID"
-                placeholder="Search by customer name or ID"
-                style={{
-                  width: '100%',
-                  backgroundColor: '#0d1627',
-                  border: '1px solid #1d2a42',
-                  borderRadius: 10,
-                  color: '#ffffff',
-                  padding: '9px 12px 9px 36px',
-                  fontSize: 13,
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }}
-              />
-            </div>
-
-            ) : <div />}
-
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 16 }}>
             {/* Staff profile */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               {/* Staff Profile Badge */}
@@ -942,117 +901,18 @@ function StaffDashboard({ staffUser, onLogout }) {
           {/* TAB 2: CUSTOMERS MANAGEMENT VIEW (Figma Screen 3)         */}
           {/* ========================================================= */}
           {activeTab === 'check-in' && (
-            <WalkInCheckIn customers={customers} onCheckIn={input => checkInWalkIn(db, staffUser.uid, input)}
+            <WalkInCheckIn customers={customers} initialCustomer={customer} onCheckIn={input => checkInWalkIn(db, staffUser.uid, input)}
               onViewOpenVisits={() => setActiveTab('open-visits')} />
           )}
           {activeTab === 'open-visits' && (
-            <OpenWalkIns result={openVisits} onCheckout={input => checkOutWalkIn(db, staffUser.uid, input)} />
+            <OpenWalkIns result={openVisits} initialVisit={visit} onCheckout={input => checkOutWalkIn(db, staffUser.uid, input)} />
           )}
           {activeTab === 'payments' && <WalkInPayments db={db} />}
           {activeTab === 'customers' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              {/* Header: Title, Total, + Add Customer button */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-                <div>
-                  <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 6px', color: '#ffffff', letterSpacing: '-0.3px' }}>
-                    Customers
-                  </h1>
-                  <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
-                    Total: {customerTotal}
-                  </p>
-                </div>
-
-                {/* + Add Customer Button (Figma Screen 3) */}
-                <button
-                  type="button"
-                  onClick={() => {
-                        setRegError('');
-                        setRegSuccess('');
-                        setShowRegisterModal(true);
-                      }}
-                  style={{
-                    backgroundColor: '#10b981',
-                    border: 0,
-                    borderRadius: 10,
-                    color: '#090e17',
-                    padding: '10px 18px',
-                    fontSize: 13,
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
-                  }}
-                >
-                  <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
-                  <span>Add Customer</span>
-                </button>
-              </div>
-
-              {/* Customers Table Container */}
-              <div style={{
-                backgroundColor: '#0d1627',
-                border: '1px solid #1a273f',
-                borderRadius: 14,
-                overflow: 'hidden'
-              }}>
-                {/* Column Headers */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '2fr 1.4fr 1.7fr 2fr',
-                  padding: '14px 20px',
-                  borderBottom: '1px solid #19243a',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: '#64748b',
-                  letterSpacing: '0.6px',
-                  textTransform: 'uppercase'
-                }}>
-                  <div>NAME</div>
-                  <div>PHONE</div>
-                  <div>EMAIL</div>
-                  <div>CUSTOMER ID</div>
-                </div>
-
-                {/* Table Body */}
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {filteredCustomers.length === 0 ? (
-                    <div style={{ padding: '32px', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-                      {search.trim() ? 'No customers match your search.' : 'No customers have been registered.'}
-                    </div>
-                  ) : (
-                    filteredCustomers.map(cust => (
-                      <div
-                        key={cust.id}
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '2fr 1.4fr 1.7fr 2fr',
-                          alignItems: 'center',
-                          padding: '14px 20px',
-                          borderBottom: '1px solid rgba(25, 36, 58, 0.6)',
-                          fontSize: 13
-                        }}
-                      >
-                        {/* Name */}
-                        <div style={{ fontWeight: 600, color: '#f8fafc' }}>
-                          {cust.fullName}
-                          {activeCustomers.has(cust.id) && <small className="walk-in-active">In gym</small>}
-                        </div>
-
-                        {/* Phone */}
-                        <div style={{ color: '#94a3b8', fontSize: 12 }}>
-                          {cust.phone || '—'}
-                        </div>
-
-                        <div style={{ color: '#cbd5e1', overflowWrap: 'anywhere' }}>{cust.email || '—'}</div>
-                        <div style={{ color: '#cbd5e1', overflowWrap: 'anywhere' }}>{cust.id}</div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
+            <CustomerDirectory customers={customers} openVisits={openVisits}
+              onNewWalkIn={() => setActiveTab('check-in')}
+              onCheckIn={customer => setActiveTab('check-in', { customer })}
+              onCheckout={visit => setActiveTab('open-visits', { visit })} />
           )}
         </main>
       </div>
