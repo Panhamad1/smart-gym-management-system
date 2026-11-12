@@ -29,6 +29,8 @@ firebase emulators:exec --project demo-smart-gym --config firebase.emulator.json
 
 The emulator command requires the Firebase CLI and a supported Java installation. It uses an isolated demo project, synthetic Auth users and a test copy of the read/create authorization policy with a synthetic staff UID. The Hosting configuration is separate from emulator rules.
 
+Sprint 2 walk-ins use the `openWalkIns` and `walkInReceipts` collections. Before releasing these features, apply the reviewed walk-in rule helpers and collection matches from `client/tests/firestore.emulator.rules` to the live policy, using the live policy's existing approved-staff check. Preserve the existing live customer rules and staff allowlist. Hosting deploys from GitHub independently of Firestore rules.
+
 For the legacy API tests, run `npm install` and `npm test` in `server`. Tests bind to a temporary loopback port and use an unavailable loopback database rather than project data.
 
 ## Hosting

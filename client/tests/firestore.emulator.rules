@@ -5,6 +5,67 @@ service cloud.firestore {
     function isApprovedStaff() {
       return request.auth != null && request.auth.uid == 'emulator-approved-staff';
     }
+
+    function customerPath(customerId) {
+      return /databases/$(database)/documents/customers/$(customerId);
+    }
+
+    function receiptPath(visitId) {
+      return /databases/$(database)/documents/walkInReceipts/$(visitId);
+    }
+
+    function openVisitPath(customerId) {
+      return /databases/$(database)/documents/openWalkIns/$(customerId);
+    }
+
+    function validCheckIn(data, customerId) {
+      let customer = getAfter(customerPath(customerId)).data;
+      return data.keys().hasOnly(['customerId', 'customerName', 'visitId', 'checkedInAt', 'checkedInBy'])
+        && data.customerId == customerId
+        && data.customerName is string
+        && data.customerName.size() > 0
+        && data.customerName == (customer.get('name', '') != ''
+          ? customer.name : customer.get('fullName', ''))
+        && data.visitId is string && data.visitId.matches('^[A-Za-z0-9]{20}$')
+        && !exists(receiptPath(data.visitId))
+        && data.checkedInAt == request.time
+        && data.checkedInBy == request.auth.uid;
+    }
+
+    function validReceipt(data, visitId) {
+      let openPath = openVisitPath(data.customerId);
+      let visit = get(openPath).data;
+      return data.keys().hasOnly(['customerId', 'customerName', 'visitId', 'checkedInAt', 'checkedInBy',
+                                  'checkedOutAt', 'recordedBy', 'amountMinor', 'currency', 'method', 'status'])
+        && data.visitId == visitId && data.visitId == visit.visitId
+        && data.customerId == visit.customerId
+        && data.customerName == visit.customerName
+        && data.checkedInAt == visit.checkedInAt
+        && data.checkedInBy == visit.checkedInBy
+        && data.checkedOutAt == request.time
+        && data.recordedBy == request.auth.uid
+        && data.amountMinor is int && data.amountMinor == 200
+        && data.currency == 'USD'
+        && data.status == 'paid'
+        && data.method in ['cash', 'bank']
+        && !existsAfter(openPath);
+    }
+
+    match /openWalkIns/{customerId} {
+      allow read: if isApprovedStaff();
+      allow create: if isApprovedStaff() && validCheckIn(request.resource.data, customerId);
+      allow delete: if isApprovedStaff()
+        && getAfter(receiptPath(resource.data.visitId)).data.customerId == customerId
+        && getAfter(receiptPath(resource.data.visitId)).data.checkedOutAt == request.time;
+      allow update: if false;
+    }
+
+    match /walkInReceipts/{visitId} {
+      allow read: if isApprovedStaff();
+      allow create: if isApprovedStaff() && validReceipt(request.resource.data, visitId);
+      allow update, delete: if false;
+    }
+
     match /customers/{customerId} {
       allow read: if isApprovedStaff();
       allow create: if isApprovedStaff()
