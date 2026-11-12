@@ -46,7 +46,7 @@ Open [the local test app](http://127.0.0.1:5174). Use only synthetic names and c
 | SCRUM-32 · Unique IDs and search | Register another `Sample Alice`. Search for `aLiCe`, then search for the first ID, then a name that does not exist. | Name search shows both records with different IDs. ID search shows only the first record. The last search shows an empty result. |
 | SCRUM-32 · Persistence and count | Clear search, compare the directory total with the dashboard customer count, then refresh. | Both totals agree and the records remain. |
 | SCRUM-32 · Offline save | While signed in locally, open Add Customer. Switch the browser to Offline in DevTools, then submit a valid synthetic record. Switch back online and search for that name before retrying. | The form shows an offline error and preserves the name and contact details. No row is saved on reconnect. Clicking Register again while online saves the record and shows its ID. |
-| SCRUM-32 · Sprint 1 controls | Check the Dashboard and sidebar. | Dashboard shows the actual customer count. Staff can open Customers, register a customer, or log out. |
+| SCRUM-32 · Sprint 1 controls | Check the Dashboard and sidebar. | Dashboard shows the actual customer count. Staff can open Customers, register a customer, or log out. The sidebar and dashboard also show the planned features and metrics without simulated data. |
 
 ## Automated checks
 

@@ -325,6 +325,45 @@ const IconCustomers = () => (
   </svg>
 );
 
+const IconPlans = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <line x1="16" y1="17" x2="8" y2="17" />
+    <line x1="10" y1="9" x2="8" y2="9" />
+  </svg>
+);
+
+const IconCheckin = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+  </svg>
+);
+
+const IconOpenVisits = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+    <polyline points="10 17 15 12 10 7" />
+    <line x1="15" y1="12" x2="3" y2="12" />
+  </svg>
+);
+
+const IconPayments = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="5" width="20" height="14" rx="2" />
+    <line x1="2" y1="10" x2="22" y2="10" />
+  </svg>
+);
+
+const IconSettings = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
+
 const IconLogout = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -363,6 +402,28 @@ const IconUserPlus = () => (
     <line x1="23" y1="11" x2="17" y2="11" />
   </svg>
 );
+
+function PlannedFeature({ icon: Icon, children }) {
+  return (
+    <div className="planned-feature">
+      <span className="planned-feature-name"><Icon />{children}</span>
+      <span className="planned-badge">Planned</span>
+    </div>
+  );
+}
+
+function PlannedMetric({ label, icon: Icon, accent, tint }) {
+  return (
+    <div className="planned-metric">
+      <span className="planned-metric-icon" style={{ color: accent, backgroundColor: tint }}><Icon /></span>
+      <div>
+        <div className="planned-metric-label">{label}</div>
+        <div className="planned-metric-value" aria-hidden="true">—</div>
+        <div className="planned-metric-label">Planned</div>
+      </div>
+    </div>
+  );
+}
 
 function StaffDashboard({ staffUser, onLogout }) {
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'customers'
@@ -552,11 +613,16 @@ function StaffDashboard({ staffUser, onLogout }) {
                 <span>Customers</span>
               </button>
 
+              <PlannedFeature icon={IconPlans}>Plans &amp; Subscriptions</PlannedFeature>
+              <PlannedFeature icon={IconCheckin}>Check-in</PlannedFeature>
+              <PlannedFeature icon={IconOpenVisits}>Open Visits</PlannedFeature>
+              <PlannedFeature icon={IconPayments}>Payments</PlannedFeature>
             </nav>
           </div>
 
           {/* Bottom Nav Links */}
           <div style={{ borderTop: '1px solid #192338', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <PlannedFeature icon={IconSettings}>Settings</PlannedFeature>
             {/* Log out */}
             <button type="button" className="staff-logout"
               onClick={onLogout}
@@ -762,7 +828,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                     <IconCustomers />
                   </div>
                   <div>
-                    <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Total Members</div>
+                    <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Registered Customers</div>
                     <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
                       {customerTotal}
                     </div>
@@ -770,10 +836,13 @@ function StaffDashboard({ staffUser, onLogout }) {
                   </div>
                 </div>
 
+                <PlannedMetric label="Active Subscriptions" icon={IconPlans} accent="#3b82f6" tint="rgba(59, 130, 246, 0.12)" />
+                <PlannedMetric label="Today's Check-ins" icon={IconCheckin} accent="#a855f7" tint="rgba(168, 85, 247, 0.12)" />
+                <PlannedMetric label="Open Visits" icon={IconOpenVisits} accent="#f59e0b" tint="rgba(245, 158, 11, 0.12)" />
               </div>
 
-              {/* Customer actions */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px)', gap: 20 }}>
+              {/* Customer actions and attendance preview */}
+              <div className="dashboard-panels">
                 {/* Quick Actions Panel */}
                 <div style={{
                   backgroundColor: '#0d1627',
@@ -827,8 +896,17 @@ function StaffDashboard({ staffUser, onLogout }) {
                     <button type="button" className="customer-directory-action" onClick={() => setActiveTab('customers')}>
                       View Customers
                     </button>
+                    <PlannedFeature icon={IconCheckin}>Check-in</PlannedFeature>
+                    <PlannedFeature icon={IconOpenVisits}>Open Visits</PlannedFeature>
                   </div>
                 </div>
+                <section className="planned-metric attendance-preview" aria-labelledby="recent-checkins-title">
+                  <h2 id="recent-checkins-title">Recent Check-ins</h2>
+                  <div className="attendance-preview-columns" aria-hidden="true">
+                    <span>Name</span><span>Time</span><span>Type</span>
+                  </div>
+                  <p>Attendance records will appear here when check-in is available.</p>
+                </section>
               </div>
             </>
           )}
