@@ -6,7 +6,7 @@ import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator, collection, addDoc, doc, getDocFromServer, getDocsFromServer, serverTimestamp, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { filterCustomers, normalizeCustomer, registerCustomer } from '../src/customer-data.js';
-import { checkInWalkIn, checkOutWalkIn } from '../src/walk-in-data.js';
+import { archiveCustomer, checkInWalkIn, checkOutWalkIn } from '../src/walk-in-data.js';
 
 const projectId = 'demo-smart-gym';
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
@@ -107,6 +107,25 @@ test('manual test accounts can sign in and enforce their different access levels
 });
 
 const approvedStaff = 'emulator-approved-staff';
+
+test('archiving is blocked during an open visit and preserves the completed receipt', async t => {
+  const db = firestoreFor(t, approvedStaff).firestore;
+  const visit = await checkInWalkIn(db, approvedStaff, {
+    form: { fullName: 'Archive Test', phone: '', email: '' }
+  });
+  const customerRef = doc(db, 'customers', visit.customerId);
+  await assert.rejects(archiveCustomer(db, approvedStaff, visit.customerId), /Check out/);
+  await assert.rejects(updateDoc(customerRef, { archivedAt: serverTimestamp(), archivedBy: approvedStaff }),
+    { code: 'permission-denied' });
+  await checkOutWalkIn(db, approvedStaff, { ...visit, method: 'cash', paymentReceived: true });
+  await archiveCustomer(db, approvedStaff, visit.customerId);
+  const archived = (await getDocFromServer(customerRef)).data();
+  assert.equal(archived.archivedBy, approvedStaff);
+  assert.ok(archived.archivedAt.toMillis() > 0);
+  assert.equal((await getDocFromServer(doc(db, 'walkInReceipts', visit.visitId))).data().status, 'paid');
+  await assert.rejects(checkInWalkIn(db, approvedStaff, { customerId: visit.customerId }), /archived/);
+  await assert.rejects(deleteDoc(customerRef), { code: 'permission-denied' });
+});
 
 test('a new walk-in saves a customer and an open visit that survive a fresh client', async t => {
   const db = firestoreFor(t, approvedStaff).firestore;

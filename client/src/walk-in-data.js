@@ -26,6 +26,7 @@ export async function checkInWalkIn(db, staffId, { customerId, form }) {
     if (!newCustomer) {
       const customer = await transaction.get(customerRef);
       if (!customer.exists()) throw new Error('Customer record not found.');
+      if (customer.data().archivedAt) throw new Error('This customer is archived.');
       customerName = normalizeCustomer(customer.id, customer.data()).fullName;
       if (!customerName.trim()) throw new Error('This customer record has no name.');
     }
@@ -50,6 +51,19 @@ export async function checkInWalkIn(db, staffId, { customerId, form }) {
   }
 
   return { customerId: customerRef.id, visitId };
+}
+
+export async function archiveCustomer(db, staffId, customerId) {
+  const customerRef = doc(db, 'customers', customerId);
+  const openRef = doc(db, 'openWalkIns', customerId);
+  await runTransaction(db, async transaction => {
+    const customer = await transaction.get(customerRef);
+    if (!customer.exists()) throw new Error('Customer record not found.');
+    if (customer.data().archivedAt) return;
+    const visit = await transaction.get(openRef);
+    if (visit.exists()) throw new Error('Check out this customer before archiving.');
+    transaction.update(customerRef, { archivedAt: serverTimestamp(), archivedBy: staffId });
+  });
 }
 
 export async function checkOutWalkIn(db, staffId, { customerId, visitId, method, paymentReceived }) {

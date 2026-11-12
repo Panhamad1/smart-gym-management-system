@@ -1,13 +1,33 @@
 import React, { useState } from 'react';
 import { filterCustomers } from './customer-data';
 import { visitTime } from './walk-in-visits';
+import { walkInError } from './walk-in-data';
 
-export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckIn, onCheckout }) {
+export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckIn, onCheckout, onArchive }) {
   const [scope, setScope] = useState('active');
   const [search, setSearch] = useState('');
+  const [archiveTarget, setArchiveTarget] = useState(null);
+  const [archiving, setArchiving] = useState(false);
+  const [archiveError, setArchiveError] = useState('');
+  const [archiveSuccess, setArchiveSuccess] = useState('');
   const visits = new Map(openVisits.records?.map(visit => [visit.customerId, visit]));
   const visibleCustomers = filterCustomers(customers, search)
     .filter(customer => scope === 'all' || visits.has(customer.id));
+
+  async function confirmArchive() {
+    if (archiving) return;
+    setArchiving(true);
+    setArchiveError('');
+    try {
+      await onArchive(archiveTarget.id);
+      setArchiveSuccess(archiveTarget.fullName + ' archived.');
+      setArchiveTarget(null);
+    } catch (error) {
+      setArchiveError(walkInError(error));
+    } finally {
+      setArchiving(false);
+    }
+  }
 
   return (
     <section className="walk-in-panel customer-directory" aria-labelledby="customer-directory-title">
@@ -18,6 +38,18 @@ export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckI
         </div>
         <button type="button" className="walk-in-primary" onClick={onNewWalkIn}>New walk-in</button>
       </div>
+      {archiveSuccess && <p className="walk-in-success" role="status">{archiveSuccess}</p>}
+      {archiveTarget && (
+        <section className="walk-in-form" aria-labelledby="archive-customer-title">
+          <h2 id="archive-customer-title">Archive {archiveTarget.fullName}?</h2>
+          <p>The customer will leave the directory. Their visits and payments will remain in history.</p>
+          {archiveError && <p className="walk-in-error" role="alert">{archiveError}</p>}
+          <div className="walk-in-mode">
+            <button type="button" disabled={archiving} onClick={() => setArchiveTarget(null)}>Cancel</button>
+            <button type="button" disabled={archiving} onClick={confirmArchive}>{archiving ? 'Archiving…' : 'Confirm archive'}</button>
+          </div>
+        </section>
+      )}
       <div className="directory-controls">
         <div className="walk-in-mode" role="group" aria-label="Filter customers">
           <button type="button" aria-pressed={scope === 'active'} onClick={() => setScope('active')}>
@@ -66,10 +98,19 @@ export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckI
                   {visit && <small>Checked in {visitTime(visit.checkedInAt)}</small>}
                 </div>
                 {openVisits.records && (
+                  <div className="walk-in-mode">
                   <button type="button" onClick={() => visit ? onCheckout(visit) : onCheckIn(customer)}
                     aria-label={(visit ? 'Check out ' : 'Check in ') + customer.fullName}>
                     {visit ? 'Check out' : 'Check in'}
                   </button>
+                  {scope === 'all' && !visit && (
+                    <button type="button" disabled={archiving} aria-label={'Archive ' + customer.fullName} onClick={() => {
+                      setArchiveTarget(customer);
+                      setArchiveError('');
+                      setArchiveSuccess('');
+                    }}>Archive</button>
+                  )}
+                  </div>
                 )}
               </li>
             );

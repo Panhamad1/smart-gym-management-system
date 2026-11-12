@@ -9,7 +9,7 @@ Use the live site to verify sign-in and read existing records. Use the local Fir
 3. Enter the correct password. Confirm Dashboard opens and shows the registered customer count.
 4. Open Customers, then choose All customers. Search for an existing customer by part of their name and by their full ID. Clear the search and check the total against Dashboard.
 5. Refresh, open Customers, choose All customers again, and verify the same saved records appear. Click Log out and confirm that refreshing stays on Staff Login.
-6. Use Dashboard → Register Customer on the hosted site when registering a real customer you intend to keep. For practice, use the emulator instructions below. The live rules deny customer deletion.
+6. Use Dashboard → New walk-in on the hosted site when a real customer arrives and is ready to check in. For practice, use the emulator instructions below. The live rules deny customer deletion.
 
 ## Start an isolated test environment
 
@@ -41,12 +41,12 @@ Open [the local test app](http://127.0.0.1:5174). Use only synthetic names and c
 | SCRUM-31 · Approved account | Sign out and sign in as `staff@example.test` using its generated password. | The dashboard opens after checking customer access. |
 | SCRUM-31 · Session | Sign in without Remember me and refresh. Open the test URL in a separate private window. Then sign out and refresh the original tab. | The original tab keeps the session across refresh until logout. The new private window asks for login. Logout returns the original tab to login. |
 | SCRUM-32 · Empty directory | On a fresh emulator run, open Customers → All customers before saving a record. | A zero total and a clear empty state appear. |
-| SCRUM-32 · Required name | Choose Dashboard → Register Customer, enter only whitespace in the name, and submit. | Validation rejects the name. The form keeps the entered values and the count stays the same. |
-| SCRUM-32 · Optional fields | Register `Sample Alice` with blank phone and email. Copy the ID shown in the success message. | The saved ID is shown and the directory adds one row. Blank contact fields are accepted. |
-| SCRUM-32 · Unique IDs and search | Register another `Sample Alice`. Search for `aLiCe`, then search for the first ID, then a name that does not exist. | Name search shows both records with different IDs. ID search shows only the first record. The last search shows an empty result. |
+| SCRUM-32 · Required name | Choose Dashboard → New walk-in, enter only whitespace in the name, and submit. | Validation rejects the name. The form keeps the entered values and the count stays the same. |
+| SCRUM-32 · Optional fields | Check in `Sample Alice` with blank phone and email. Open Customers → All customers and copy the ID from the new row. | The visit opens and the directory adds one row. Blank contact fields are accepted. |
+| SCRUM-32 · Unique IDs and search | Check in another synthetic customer named `Sample Alice`. Search for `aLiCe`, then search for the first ID, then a name that does not exist. | Name search shows both records with different IDs. ID search shows only the first record. The last search shows an empty result. |
 | SCRUM-32 · Persistence and count | Clear search, compare the directory total with the dashboard customer count, then refresh. | Both totals agree and the records remain. |
-| SCRUM-32 · Offline save | While signed in locally, open Dashboard → Register Customer. Switch the browser to Offline in DevTools, then submit a valid synthetic record. Switch back online and search for that name before retrying. | The form shows an offline error and preserves the name and contact details. No row is saved on reconnect. Clicking Register again while online saves the record and shows its ID. |
-| SCRUM-32 · Sprint 1 controls | Check the Dashboard and sidebar. | Dashboard shows the actual customer count. Staff can open Customers, register a customer, or log out. The sidebar and dashboard also show the planned features and metrics without simulated data. |
+| SCRUM-32 · Offline save | While signed in locally, open Dashboard → New walk-in. Switch the browser to Offline in DevTools, then submit a valid synthetic record. Switch back online and search for that name before retrying. | The form shows an offline error and preserves the name and contact details. No row is saved on reconnect. Clicking Check in again while online saves the customer and opens the visit. |
+| SCRUM-32 · Sprint 1 controls | Check the Dashboard and sidebar. | Dashboard shows the actual customer count. Staff can open Customers, start a walk-in check-in, or log out. The sidebar and dashboard also show the planned features and metrics without simulated data. |
 
 ## Sprint 2 walk-in tests
 
@@ -60,6 +60,8 @@ Use the isolated test environment above and sign in as `staff@example.test`.
 | SCRUM-17 · Paid checkout | After simulating a cash payment, check I received the payment and confirm. Open Payments and refresh. | The customer disappears from Open Visits and the In gym label clears. Payments shows one $2.00 USD Cash entry. |
 | SCRUM-17 · Return visit and bank payment | Check the same customer in using Returning customer. Check out with Bank transfer and confirm receipt. | The new visit closes and Payments shows a separate $2.00 USD Bank transfer entry. |
 | Customer navigation | Open Customers. Use New walk-in to register and check in. From In gym, select Check out. After paid checkout, switch to All customers, search for that person, and select Check in. | Checkout opens with the active visit selected. After checkout, the row disappears from In gym. Check in opens the returning-customer form with the existing customer selected. |
+| Visit history | Complete a paid walk-in. Open Open Visits → Visit history and refresh. | The completed visit shows the customer, Cambodia-local check-in and checkout times, visit ID, and payment amount and method. |
+| Archive customer | Check out a customer. In Customers → All customers, select Archive and confirm. Refresh and look for the visit in Visit history and Payments. | The customer disappears from the directory and returning check-in search. The visit and payment remain. A customer who is still checked in has no Archive action. |
 | SCRUM-17 · Concurrent checkout | Use two signed-in browser sessions. Open checkout for the same active visit in both. Confirm in one, then submit the stale form in the other. | The second cashier sees that the visit is no longer open. Payments contains a single entry for that visit. |
 
 ## Automated checks
