@@ -18,6 +18,8 @@ Subscription and attendance screens are labeled as demos. Customer editing, pers
 
 ## Verify
 
+Use the [manual test checklist](docs/manual-test-checklist.md) to check the review branch in a browser against local Firebase emulators.
+
 ```powershell
 cd client
 npm test

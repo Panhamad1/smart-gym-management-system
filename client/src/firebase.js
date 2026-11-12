@@ -1,7 +1,7 @@
 
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { connectAuthEmulator, getAuth } from "firebase/auth";
+import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBaf2F8D0UVu4xCnon3OHlnlPvybTZ1JeQ",
@@ -12,7 +12,16 @@ const firebaseConfig = {
   appId: "1:294671992073:web:b1ba33982ee208cf07ffd8"
 };
 
-const app = initializeApp(firebaseConfig);
+// The emulator mode is available only in Vite's development server.
+const useEmulators = import.meta.env.DEV && import.meta.env.MODE === "emulator";
+const app = initializeApp(useEmulators
+  ? { projectId: "demo-smart-gym", apiKey: "emulator-only" }
+  : firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+if (useEmulators) {
+  connectAuthEmulator(auth, "http://127.0.0.1:9099");
+  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+}

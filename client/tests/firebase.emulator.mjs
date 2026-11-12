@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator, collection, addDoc, getDocsFromServer, serverTimestamp, updateDoc } from 'firebase/firestore';
@@ -62,5 +63,31 @@ test('signed-out and unapproved clients cannot read or write customer records', 
     await assert.rejects(getDocsFromServer(customers), { code: 'permission-denied' });
     const data = customerPayload({ fullName: 'Test customer', phone: '', email: '' }, serverTimestamp());
     await assert.rejects(addDoc(customers, data), { code: 'permission-denied' });
+  }
+});
+
+test('manual test accounts can sign in and enforce their different access levels', async t => {
+  const seed = () => execFileSync(process.execPath, ['scripts/seed-emulator.mjs'], { encoding: 'utf8' });
+  seed();
+  const credentials = seed().trim().split(/\r?\n/);
+  assert.equal(credentials.length, 2);
+
+  for (const line of credentials) {
+    const [email, password] = line.trim().split(/\s+/);
+    const app = appFor(t);
+    const auth = getAuth(app);
+    connectAuthEmulator(auth, 'http://' + authHost, { disableWarnings: true });
+    const db = getFirestore(app);
+    const [host, port] = firestoreHost.split(':');
+    connectFirestoreEmulator(db, host, Number(port));
+
+    await signInWithEmailAndPassword(auth, email, password);
+    const customers = collection(db, 'customers');
+    if (email === 'staff@example.test') {
+      await getDocsFromServer(customers);
+    } else {
+      assert.equal(email, 'unapproved@example.test');
+      await assert.rejects(getDocsFromServer(customers), { code: 'permission-denied' });
+    }
   }
 });
