@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
 import { normalizeCustomer, filterCustomers, registerCustomer } from './customer-data';
+import { checkInWalkIn, checkOutWalkIn } from './walk-in-data';
+import { WalkInCheckIn } from './walk-in-check-in';
+import { OpenWalkIns, WalkInPayments, useWalkInRecords, visitTime } from './walk-in-visits';
 import { auth, db } from './firebase';
 import {
   signInWithEmailAndPassword,
@@ -412,21 +415,30 @@ function PlannedFeature({ icon: Icon, children }) {
   );
 }
 
-function PlannedMetric({ label, icon: Icon, accent, tint }) {
+function VisitLink({ icon: Icon, tab, activeTab, onNavigate, children }) {
+  return (
+    <button className="planned-feature visit-link" type="button" aria-current={activeTab === tab ? 'page' : undefined}
+      onClick={() => onNavigate(tab)}>
+      <span className="planned-feature-name"><Icon />{children}</span>
+    </button>
+  );
+}
+
+function PlannedMetric({ label, icon: Icon, accent, tint, value, status = 'Planned' }) {
   return (
     <div className="planned-metric">
       <span className="planned-metric-icon" style={{ color: accent, backgroundColor: tint }}><Icon /></span>
       <div>
         <div className="planned-metric-label">{label}</div>
-        <div className="planned-metric-value" aria-hidden="true">—</div>
-        <div className="planned-metric-label">Planned</div>
+        <div className="planned-metric-value">{value ?? '—'}</div>
+        {value == null && <div className="planned-metric-label">{status}</div>}
       </div>
     </div>
   );
 }
 
 function StaffDashboard({ staffUser, onLogout }) {
-  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'customers'
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [search, setSearch] = useState('');
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -436,6 +448,7 @@ function StaffDashboard({ staffUser, onLogout }) {
   const [customersLoading, setCustomersLoading] = useState(true);
   const [customersError, setCustomersError] = useState('');
   const [customerRefresh, setCustomerRefresh] = useState(0);
+  const openVisits = useWalkInRecords(db, customerTotal !== null, 'openWalkIns');
   useEffect(() => {
     setCustomersLoading(true);
     setCustomersError('');
@@ -490,6 +503,12 @@ function StaffDashboard({ staffUser, onLogout }) {
   };
 
   const filteredCustomers = filterCustomers(customers, search);
+  const activeCustomers = new Set(openVisits.records?.map(visit => visit.customerId));
+  const pageTitle = {
+    dashboard: '2. Dashboard', customers: '3. Customer Management',
+    'check-in': 'Check-in', 'open-visits': 'Open Visits', payments: 'Payments'
+  }[activeTab];
+  const visitNavigation = { activeTab, onNavigate: setActiveTab };
 
   if (customerTotal === null) {
     return (
@@ -517,10 +536,10 @@ function StaffDashboard({ staffUser, onLogout }) {
     }}>
       {/* Top Breadcrumb / Title Label */}
       <div style={{ fontSize: 13, color: '#64748b', fontWeight: 600, marginBottom: 12 }}>
-        {activeTab === 'dashboard' ? 'Smart Gym - 2. Dashboard' : 'Smart Gym - 3. Customer Management'}
+        Smart Gym - {pageTitle}
       </div>
       <h2 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 20px', color: '#ffffff', letterSpacing: '-0.3px' }}>
-        {activeTab === 'dashboard' ? '2. Dashboard' : '3. Customer Management'}
+        {pageTitle}
       </h2>
 
       {/* Main Outer App Frame */}
@@ -614,9 +633,9 @@ function StaffDashboard({ staffUser, onLogout }) {
               </button>
 
               <PlannedFeature icon={IconPlans}>Plans &amp; Subscriptions</PlannedFeature>
-              <PlannedFeature icon={IconCheckin}>Check-in</PlannedFeature>
-              <PlannedFeature icon={IconOpenVisits}>Open Visits</PlannedFeature>
-              <PlannedFeature icon={IconPayments}>Payments</PlannedFeature>
+              <VisitLink icon={IconCheckin} tab="check-in" {...visitNavigation}>Check-in</VisitLink>
+              <VisitLink icon={IconOpenVisits} tab="open-visits" {...visitNavigation}>Open Visits</VisitLink>
+              <VisitLink icon={IconPayments} tab="payments" {...visitNavigation}>Payments</VisitLink>
             </nav>
           </div>
 
@@ -838,7 +857,8 @@ function StaffDashboard({ staffUser, onLogout }) {
 
                 <PlannedMetric label="Active Subscriptions" icon={IconPlans} accent="#3b82f6" tint="rgba(59, 130, 246, 0.12)" />
                 <PlannedMetric label="Today's Check-ins" icon={IconCheckin} accent="#a855f7" tint="rgba(168, 85, 247, 0.12)" />
-                <PlannedMetric label="Open Visits" icon={IconOpenVisits} accent="#f59e0b" tint="rgba(245, 158, 11, 0.12)" />
+                <PlannedMetric label="Open Visits" icon={IconOpenVisits} accent="#f59e0b" tint="rgba(245, 158, 11, 0.12)"
+                  value={openVisits.records?.length} status={openVisits.error ? 'Unavailable' : 'Loading…'} />
               </div>
 
               {/* Customer actions and attendance preview */}
@@ -896,16 +916,23 @@ function StaffDashboard({ staffUser, onLogout }) {
                     <button type="button" className="customer-directory-action" onClick={() => setActiveTab('customers')}>
                       View Customers
                     </button>
-                    <PlannedFeature icon={IconCheckin}>Check-in</PlannedFeature>
-                    <PlannedFeature icon={IconOpenVisits}>Open Visits</PlannedFeature>
+                    <VisitLink icon={IconCheckin} tab="check-in" {...visitNavigation}>Check-in</VisitLink>
+                    <VisitLink icon={IconOpenVisits} tab="open-visits" {...visitNavigation}>Open Visits</VisitLink>
                   </div>
                 </div>
                 <section className="planned-metric attendance-preview" aria-labelledby="recent-checkins-title">
-                  <h2 id="recent-checkins-title">Recent Check-ins</h2>
+                  <h2 id="recent-checkins-title">Recent Open Check-ins</h2>
                   <div className="attendance-preview-columns" aria-hidden="true">
                     <span>Name</span><span>Time</span><span>Type</span>
                   </div>
-                  <p>Attendance records will appear here when check-in is available.</p>
+                  {openVisits.records?.slice(0, 5).map(visit => (
+                    <div className="attendance-preview-columns" key={visit.visitId}>
+                      <span>{visit.customerName}</span><span>{visitTime(visit.checkedInAt)}</span><span>Walk-in</span>
+                    </div>
+                  ))}
+                  {openVisits.error && <p>Walk-in records are unavailable.</p>}
+                  {!openVisits.error && !openVisits.records && <p>Loading open visits…</p>}
+                  {openVisits.records?.length === 0 && <p>No open walk-in visits.</p>}
                 </section>
               </div>
             </>
@@ -914,6 +941,14 @@ function StaffDashboard({ staffUser, onLogout }) {
           {/* ========================================================= */}
           {/* TAB 2: CUSTOMERS MANAGEMENT VIEW (Figma Screen 3)         */}
           {/* ========================================================= */}
+          {activeTab === 'check-in' && (
+            <WalkInCheckIn customers={customers} onCheckIn={input => checkInWalkIn(db, staffUser.uid, input)}
+              onViewOpenVisits={() => setActiveTab('open-visits')} />
+          )}
+          {activeTab === 'open-visits' && (
+            <OpenWalkIns result={openVisits} onCheckout={input => checkOutWalkIn(db, staffUser.uid, input)} />
+          )}
+          {activeTab === 'payments' && <WalkInPayments db={db} />}
           {activeTab === 'customers' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {/* Header: Title, Total, + Add Customer button */}
@@ -1002,6 +1037,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                         {/* Name */}
                         <div style={{ fontWeight: 600, color: '#f8fafc' }}>
                           {cust.fullName}
+                          {activeCustomers.has(cust.id) && <small className="walk-in-active">In gym</small>}
                         </div>
 
                         {/* Phone */}

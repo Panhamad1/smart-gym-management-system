@@ -55,6 +55,132 @@
   flex-shrink: 0;
 }
 
+.visit-link {
+  width: 100%;
+  margin: 0;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.visit-link:hover,
+.visit-link[aria-current="page"] {
+  background: #10302e;
+  border-color: #146c58;
+  color: #6ee7b7;
+}
+
+.walk-in-panel {
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid #1a273f;
+  border-radius: 14px;
+  background: #0d1627;
+}
+
+.walk-in-panel h1 {
+  margin: 0 0 12px;
+  font-size: 24px;
+}
+
+.walk-in-panel h2 {
+  font-size: 18px;
+}
+
+.walk-in-panel p,
+.walk-in-panel small {
+  color: #cbd5e1;
+}
+
+.walk-in-panel button,
+.walk-in-panel input,
+.walk-in-panel select {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #070d18;
+  color: #f8fafc;
+  font: inherit;
+}
+
+.walk-in-panel button[aria-pressed="true"],
+.walk-in-panel .walk-in-primary {
+  background: #10b981;
+  border-color: #10b981;
+  color: #07130f;
+  font-weight: 700;
+}
+
+.walk-in-mode,
+.walk-in-records li,
+.walk-in-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.walk-in-form {
+  max-width: 480px;
+  margin-top: 20px;
+}
+
+.walk-in-form fieldset {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.walk-in-form label {
+  margin: 0;
+}
+
+.walk-in-confirm input {
+  width: auto;
+  accent-color: #10b981;
+}
+
+.walk-in-records,
+.walk-in-customer-results {
+  list-style: none;
+  padding: 0;
+}
+
+.walk-in-records li {
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #253449;
+  overflow-wrap: anywhere;
+}
+
+.walk-in-records small,
+.walk-in-customer-results small {
+  display: block;
+  margin-top: 4px;
+}
+
+.walk-in-customer-results button {
+  width: 100%;
+  margin-bottom: 6px;
+  text-align: left;
+}
+
+.walk-in-panel .walk-in-error {
+  color: #fca5a5;
+}
+
+.walk-in-panel .walk-in-success,
+.walk-in-active {
+  color: #6ee7b7;
+}
+
+.walk-in-active {
+  display: block;
+  margin-top: 4px;
+}
+
 .planned-metric {
   display: flex;
   flex-direction: column;

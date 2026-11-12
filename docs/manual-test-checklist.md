@@ -48,6 +48,19 @@ Open [the local test app](http://127.0.0.1:5174). Use only synthetic names and c
 | SCRUM-32 · Offline save | While signed in locally, open Add Customer. Switch the browser to Offline in DevTools, then submit a valid synthetic record. Switch back online and search for that name before retrying. | The form shows an offline error and preserves the name and contact details. No row is saved on reconnect. Clicking Register again while online saves the record and shows its ID. |
 | SCRUM-32 · Sprint 1 controls | Check the Dashboard and sidebar. | Dashboard shows the actual customer count. Staff can open Customers, register a customer, or log out. The sidebar and dashboard also show the planned features and metrics without simulated data. |
 
+## Sprint 2 walk-in tests
+
+Use the isolated test environment above and sign in as `staff@example.test`.
+
+| Jira item | Steps | Expected result |
+| --- | --- | --- |
+| SCRUM-16 · New walk-in | Open Check-in, enter `Sample Walk-in` under New customer, and select Check in. Open Open Visits and refresh. | One active visit appears with the customer name and Cambodia check-in time. Customers shows the same person as In gym. |
+| SCRUM-16 · Duplicate visit | Open Check-in, choose Returning customer, search for `Sample Walk-in`, select the existing record, and submit. | The app says the customer is already checked in. Open Visits still has one visit for that customer. |
+| SCRUM-17 · Unpaid checkout | In Open Visits, choose Check out and select Cash without confirming receipt of payment. | The amount is $2.00 USD and the confirmation button stays disabled. The visit stays open. |
+| SCRUM-17 · Paid checkout | After simulating a cash payment, check I received the payment and confirm. Open Payments and refresh. | The customer disappears from Open Visits and the In gym label clears. Payments shows one $2.00 USD Cash entry. |
+| SCRUM-17 · Return visit and bank payment | Check the same customer in using Returning customer. Check out with Bank transfer and confirm receipt. | The new visit closes and Payments shows a separate $2.00 USD Bank transfer entry. |
+| SCRUM-17 · Concurrent checkout | Use two signed-in browser sessions. Open checkout for the same active visit in both. Confirm in one, then submit the stale form in the other. | The second cashier sees that the visit is no longer open. Payments contains a single entry for that visit. |
+
 ## Automated checks
 
 From `client`, run `npm test` for customer validation and search and `npm run build` for a production build. For isolated Firebase checks, stop the manually started emulators first, then run:
@@ -56,7 +69,7 @@ From `client`, run `npm test` for customer validation and search and `npm run bu
 firebase emulators:exec --project demo-smart-gym --config firebase.emulator.json --only auth,firestore "npm run test:emulator"
 ```
 
-The suite covers valid and invalid login, sign-out, separate IDs for customers with the same name, fresh-client reads, denied reads and writes, and the manual test accounts. From `server`, run `npm test` for the legacy API checks. These verify missing signing-secret handling, anonymous request rejection, and the response when the local database is unavailable.
+The suite covers login, customer persistence and permissions, plus walk-in persistence, concurrent check-in and checkout, and rejection of invalid or partial checkout writes. From `server`, run `npm test` for the legacy API checks. These verify missing signing-secret handling, anonymous request rejection, and the response when the local database is unavailable.
 
 ## Figma prototype
 
@@ -72,4 +85,4 @@ This test checks prototype navigation. Use the local test app above to test cred
 
 ## Record results
 
-For each case, record the commit, date, expected result, actual result, and Pass or Fail in SCRUM-25. Use screenshots with synthetic records only. SCRUM-32 tracks the release decision, and SCRUM-33 tracks Figma and Sprint 1 evidence. Customer editing, persisted visits, checkout, payments, and subscriptions need separate tests once their scope is confirmed.
+Record Sprint 1 cases in SCRUM-25 and walk-in cases in SCRUM-16 or SCRUM-17. Include the commit, date, expected result, actual result, and Pass or Fail. Use screenshots with synthetic records only. SCRUM-32 tracks the Sprint 1 release decision, and SCRUM-33 tracks Figma and Sprint 1 evidence.
