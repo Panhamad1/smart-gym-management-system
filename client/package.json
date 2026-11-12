@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "node --test tests/*.test.js",
+    "test:emulator": "node --test tests/firebase.emulator.mjs",
     "build": "vite build && node scripts/write-version.cjs",
     "preview": "vite preview"
   },

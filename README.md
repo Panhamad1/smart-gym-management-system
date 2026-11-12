@@ -1,23 +1,10 @@
 # Smart Gym Management System
 
-React + Vite UI prototype deployed through GitHub Actions to Firebase Hosting.
-
-Live site: https://smart-gym-team2.web.app
-
-## Current scope
-
-- Hosted screens use the version from `feature/SCRUM-14-login-and-dashboard`, commit `22d95d5`.
-- Staff login includes Firebase, local Express, and seeded demo-account paths.
-- Dashboard metrics and customer-directory rows are sample data. New rows added during a session are prototype UI state, not proof of database persistence.
-- The customer's membership/status columns and search follow the friend's customer-management screen design.
-
-The Firebase-only version with database-backed counts and confirmed writes is preserved on the `panha` branch at `55113da`. Deployments continue to follow `main`; `panha` is preserved for later development.
-
-The planned next iteration models visits: register/check in, show customers currently inside, and record payment/checkout. That workflow is not implemented yet. Existing customer records remain stored.
+React + Vite staff app using Firebase Authentication and Cloud Firestore. This review branch combines the hosted screen layout with the Firebase customer flow preserved on `panha`. See the [Sprint 1 audit](docs/sprint-1-audit.md) for the deployed baseline and review findings.
 
 ## Run locally
 
-Use Node.js 22.12+ and npm. From the repository root:
+Use Node.js 22 and npm. From the repository root:
 
 ```powershell
 cd client
@@ -25,38 +12,23 @@ npm ci
 npm run dev
 ```
 
-Open the URL printed by Vite, normally http://localhost:5173. The login screen provides demo quick-fill buttons. Existing Firebase staff accounts can also sign in. Firestore still enforces its published staff permissions; demo sign-in does not grant Firestore access.
+Open the local Vite URL. The frontend uses the project configured in `src/firebase.js`. That configuration points to the real Firebase project, so use the emulator test commands below for synthetic data. Staff sign in with an existing Firebase account. Firestore must authorize customer reads before the staff area opens. The customer total and directory come from Firestore. Registration displays the saved document ID.
 
-The `server/` and `database/` folders contain the local Express/MySQL prototype. The hosted frontend attempts localhost API calls before falling back, but Firebase Hosting does not deploy that server. Local MySQL records are not automatically migrated to Firestore.
+Subscription and attendance screens are labeled as demos. Customer editing, persisted visits and checkout/payment are tracked separately. The legacy Express/MySQL code under `server` and `database` is kept for reference and local regression tests. Running it requires a private `JWT_SECRET` of at least 32 characters and a separately provisioned local staff account. The hosted frontend has no Express dependency.
 
-## Build
-
-```powershell
-cd client
-npm run build
-```
-
-The build writes `client/dist`, including `version.json` with the Git commit used to build the deployed site.
-
-## Automatic deployment
-
-`.github/workflows/firebase-hosting.yml` runs on every push to `main`, including PR merges, or from GitHub Actions using Run workflow. It installs from `client/package-lock.json`, builds, and deploys the live channel for `smart-gym-team2`. Failed builds stop deployment.
-
-The workflow reads `client/firebase.json`. Its `public: dist` path is relative to `client`. The deployment service account is stored only in the GitHub Actions secret `FIREBASE_SERVICE_ACCOUNT_SMART_GYM_TEAM2`; never commit its JSON key.
-
-Check deployment progress in the repository's Actions tab. After completion, https://smart-gym-team2.web.app/version.json identifies the deployed commit.
-
-For a manual deployment using an authorized Firebase CLI login:
+## Verify
 
 ```powershell
 cd client
-npm ci
+npm test
 npm run build
-firebase deploy --only hosting --project smart-gym-team2
+firebase emulators:exec --project demo-smart-gym --config firebase.emulator.json --only auth,firestore "npm run test:emulator"
 ```
 
-## Data access
+The emulator command requires the Firebase CLI and a supported Java installation. It uses an isolated demo project, synthetic Auth users and a test copy of the read/create authorization policy with a synthetic staff UID. The Hosting configuration is separate from emulator rules.
 
-Firestore rules enforce the approved staff account. Hosting deployment does not change Authentication accounts, Firestore rules, or stored records. This hosted prototype can display success/local rows even if persistence fails; the Firebase-only implementation on `panha` fixes that behavior.
+For the legacy API tests, run `npm install` and `npm test` in `server`. Tests bind to a temporary loopback port and use an unavailable loopback database rather than project data.
 
-Do not use the prototype's sample member counts or customer rows as database reports. The planned visit/check-in/payment/checkout workflow is still deferred.
+## Hosting
+
+The live site is <https://smart-gym-team2.web.app>. GitHub Actions installs locked frontend dependencies, builds, and runs the unit tests for pull requests. The deploy step runs on pushes to `main` and manual runs on `main`, using the existing GitHub Actions secret and `client/firebase.json`. The deployed commit is published at <https://smart-gym-team2.web.app/version.json>. Firebase staff accounts and production rules are managed separately from Hosting. Do not commit deployment keys, reusable passwords, or real customer data.

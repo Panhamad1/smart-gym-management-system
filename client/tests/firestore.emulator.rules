@@ -1,0 +1,24 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Matches the audited policy with a synthetic UID for local tests.
+    function isApprovedStaff() {
+      return request.auth != null && request.auth.uid == 'emulator-approved-staff';
+    }
+    match /customers/{customerId} {
+      allow read: if isApprovedStaff();
+      allow create: if isApprovedStaff()
+        && request.resource.data.keys().hasOnly(['name', 'phone', 'email', 'createdAt'])
+        && request.resource.data.keys().hasAll(['name', 'createdAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && (!('phone' in request.resource.data)
+            || (request.resource.data.phone is string && request.resource.data.phone.size() <= 30))
+        && (!('email' in request.resource.data)
+            || (request.resource.data.email is string && request.resource.data.email.size() <= 254))
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+  }
+}

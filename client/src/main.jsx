@@ -1,16 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
+import { normalizeCustomer, filterCustomers, customerPayload } from './customer-data';
 import { auth, db } from './firebase';
 import {
   signInWithEmailAndPassword,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
   signOut,
   onAuthStateChanged
 } from 'firebase/auth';
 import {
   collection,
   addDoc,
-  getDocs,
+  onSnapshot,
   serverTimestamp
 } from 'firebase/firestore';
 
@@ -33,7 +37,7 @@ const DumbbellIcon = ({ className = "w-8 h-8", style = {} }) => (
 // =============================================================
 // SCREEN 1: STAFF LOGIN (Matches Figma Exactly)
 // =============================================================
-function StaffLogin({ onLoginSuccess }) {
+function StaffLogin() {
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -48,76 +52,19 @@ function StaffLogin({ onLoginSuccess }) {
 
     const cleanInput = usernameOrEmail.trim().toLowerCase();
 
-    // 1. Try Express backend authentication first (SCRUM-14)
     try {
-      const res = await fetch('http://localhost:3001/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usernameOrEmail: cleanInput, password, rememberMe })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        if (rememberMe) {
-          localStorage.setItem('token', data.token);
-          localStorage.setItem('staff', JSON.stringify(data.staff));
-        } else {
-          sessionStorage.setItem('token', data.token);
-          sessionStorage.setItem('staff', JSON.stringify(data.staff));
-        }
-        if (onLoginSuccess) onLoginSuccess(data.staff);
-        return;
-      }
-    } catch (e) {
-      // Backend offline or unreachable
-    }
-
-    // 2. Try Firebase Auth fallback
-    try {
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       await signInWithEmailAndPassword(auth, cleanInput, password);
-      return;
-    } catch (err) {
-      // 3. Seeded Staff Fallback (Mao Posovandeth, Chao, Admin)
-      if ((cleanInput === 'posovandethmao@gmail.com' || cleanInput === 'mao') && password === 'Mao@123') {
-        const staff = { email: 'posovandethmao@gmail.com', fullName: 'Mao Posovandeth', role: 'Product Owner' };
-        localStorage.setItem('staff', JSON.stringify(staff));
-        if (onLoginSuccess) onLoginSuccess(staff);
-        return;
-      }
-      if ((cleanInput === 'chao' || cleanInput === 'chao@smartgym.com') && password === 'Staff@123') {
-        const staff = { email: 'chao@smartgym.com', fullName: 'Chao Vanchhoeurng', role: 'Staff' };
-        localStorage.setItem('staff', JSON.stringify(staff));
-        if (onLoginSuccess) onLoginSuccess(staff);
-        return;
-      }
-      if ((cleanInput === 'admin' || cleanInput === 'admin@smartgym.com') && password === 'Admin@123') {
-        const staff = { email: 'admin@smartgym.com', fullName: 'System Administrator', role: 'Administrator' };
-        localStorage.setItem('staff', JSON.stringify(staff));
-        if (onLoginSuccess) onLoginSuccess(staff);
-        return;
-      }
-
-      // Criterion 1: Generic error message on invalid credentials
-      setError('Invalid username or password.');
+    } catch (error) {
+      setError(error.code === 'auth/network-request-failed'
+        ? 'Unable to connect. Check your internet connection and try again.'
+        : error.code === 'auth/too-many-requests'
+          ? 'Too many attempts. Please try again later.'
+          : 'Invalid email or password.');
     } finally {
       setLoading(false);
     }
   }
-
-  const fillQuick = (type) => {
-    if (type === 'po') {
-      setUsernameOrEmail('posovandethmao@gmail.com');
-      setPassword('Mao@123');
-      setError('');
-    } else if (type === 'staff') {
-      setUsernameOrEmail('chao@smartgym.com');
-      setPassword('Staff@123');
-      setError('');
-    } else {
-      setUsernameOrEmail('wrong@smartgym.com');
-      setPassword('WrongPassword123');
-      setError('');
-    }
-  };
 
   return (
     <div style={{
@@ -187,35 +134,7 @@ function StaffLogin({ onLoginSuccess }) {
             </span>
           </div>
 
-          {/* Quick testing pills */}
-          <div style={{ borderTop: '1px solid #1e293b', paddingTop: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 10 }}>
-              ⚡ Quick Fill Seeded Staff (SCRUM-14):
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={() => fillQuick('po')}
-                style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.35)', color: '#6ee7b7', padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}
-              >
-                ✓ PO (posovandethmao@gmail.com / Mao@123)
-              </button>
-              <button
-                type="button"
-                onClick={() => fillQuick('staff')}
-                style={{ background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.35)', color: '#93c5fd', padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}
-              >
-                ✓ Staff (chao@smartgym.com / Staff@123)
-              </button>
-              <button
-                type="button"
-                onClick={() => fillQuick('invalid')}
-                style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)', color: '#fca5a5', padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}
-              >
-                ✗ Invalid Credentials
-              </button>
-            </div>
-          </div>
+          <p style={{ color: '#94a3b8', fontSize: 13 }}>Sign in with your authorized staff email and password. Contact your administrator if you need access.</p>
         </div>
 
         {/* Right Split Card */}
@@ -261,14 +180,16 @@ function StaffLogin({ onLoginSuccess }) {
               <p style={{ margin: '0 0 24px', fontSize: 12, color: '#94a3b8' }}>Welcome back! Please sign in to continue.</p>
 
               <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Username or Email */}
+                {/* Staff Email */}
                 <div>
                   <input
-                    type="text"
+                    type="email"
+                    aria-label="Staff email"
+                    autoComplete="username"
                     required
                     value={usernameOrEmail}
                     onChange={e => { setUsernameOrEmail(e.target.value); if (error) setError(''); }}
-                    placeholder="Username or Email"
+                    placeholder="Staff email"
                     style={{
                       width: '100%',
                       background: '#0d1624',
@@ -286,6 +207,8 @@ function StaffLogin({ onLoginSuccess }) {
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showPassword ? 'text' : 'password'}
+                    aria-label="Password"
+                    autoComplete="current-password"
                     required
                     value={password}
                     onChange={e => { setPassword(e.target.value); if (error) setError(''); }}
@@ -526,7 +449,6 @@ function StaffDashboard({ staffUser, onLogout }) {
 
   // Core metrics matching Figma Screen 2
   const [metrics, setMetrics] = useState({
-    totalMembers: 124,
     activeSubscriptions: 98,
     todayCheckins: 42,
     openVisits: 18
@@ -541,14 +463,36 @@ function StaffDashboard({ staffUser, onLogout }) {
     { id: 5, name: 'Tith Dara', time: '09:32 AM', type: 'Member' }
   ]);
 
-  // Customers Directory matching Figma Screen 3
-  const [customersList, setCustomersList] = useState([
-    { id: 1, name: 'Sok Chan', phone: '012 345 678', membership: 'Monthly', status: 'Active' },
-    { id: 2, name: 'Da Ra', phone: '018 765 432', membership: 'Yearly', status: 'Active' },
-    { id: 3, name: 'Virak S.', phone: '077 668 999', membership: 'Walk-In', status: 'Open' },
-    { id: 4, name: 'Chea Srey', phone: '096 111 222', membership: 'Monthly', status: 'Active' },
-    { id: 5, name: 'Tith Dara', phone: '012 222 333', membership: 'Yearly', status: 'Active' }
-  ]);
+  const [customers, setCustomers] = useState([]);
+  const [customerTotal, setCustomerTotal] = useState(null);
+  const [customersLoading, setCustomersLoading] = useState(true);
+  const [customersError, setCustomersError] = useState('');
+  const [customerRefresh, setCustomerRefresh] = useState(0);
+  useEffect(() => {
+    setCustomersLoading(true);
+    setCustomersError('');
+    const loadingTimeout = setTimeout(() => {
+      setCustomersError('Unable to reach the customer database. Check your connection, then retry.');
+      setCustomerTotal(null);
+      setCustomersLoading(false);
+    }, 10000);
+    const unsubscribe = onSnapshot(collection(db, 'customers'), { includeMetadataChanges: true }, snapshot => {
+      if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+      clearTimeout(loadingTimeout);
+      setCustomersError('');
+      setCustomers(snapshot.docs.map(doc => normalizeCustomer(doc.id, doc.data())));
+      setCustomerTotal(snapshot.size);
+      setCustomersLoading(false);
+    }, error => {
+      clearTimeout(loadingTimeout);
+      setCustomersError(error.code === 'permission-denied'
+        ? 'Your account does not have customer access. Contact your administrator.'
+        : 'Unable to load customers. Check your connection and retry.');
+      setCustomerTotal(null);
+      setCustomersLoading(false);
+    });
+    return () => { clearTimeout(loadingTimeout); unsubscribe(); };
+  }, [customerRefresh]);
 
   // Customer registration form state
   const [regForm, setRegForm] = useState({ fullName: '', phone: '', email: '' });
@@ -566,56 +510,16 @@ function StaffDashboard({ staffUser, onLogout }) {
     setRegError('');
     setRegSuccess('');
 
-    const name = regForm.fullName.trim();
-    if (!name) {
-      setRegError('Please enter a customer name.');
-      return;
-    }
-
     setSavingCustomer(true);
     try {
-      // 1. Try Express backend if token exists
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      if (token) {
-        try {
-          await fetch('http://localhost:3001/api/customers', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-            body: JSON.stringify({ fullName: name, phone: regForm.phone, email: regForm.email })
-          });
-        } catch (e) {}
-      }
-
-      // 2. Try Firestore fallback
-      try {
-        await addDoc(collection(db, 'customers'), {
-          name,
-          phone: regForm.phone.trim() || null,
-          email: regForm.email.trim() || null,
-          createdAt: serverTimestamp()
-        });
-      } catch (e) {}
-
-      // Add to customers directory
-      const newCust = {
-        id: Date.now(),
-        name,
-        phone: regForm.phone.trim() || 'N/A',
-        membership: 'Walk-In',
-        status: 'Open'
-      };
-      setCustomersList([newCust, ...customersList]);
-
-      // Increment metrics
-      setMetrics(prev => ({ ...prev, totalMembers: prev.totalMembers + 1 }));
-      setRegSuccess('Customer "' + name + '" registered successfully.');
+      const payload = customerPayload(regForm, serverTimestamp());
+      const customer = await addDoc(collection(db, 'customers'), payload);
+      setRegSuccess('Customer registered. ID: ' + customer.id);
       setRegForm({ fullName: '', phone: '', email: '' });
-      setTimeout(() => {
-        setRegSuccess('');
-        setShowRegisterModal(false);
-      }, 1500);
-    } catch (err) {
-      setRegError('Error saving customer.');
+    } catch (error) {
+      setRegError(error.code === 'permission-denied'
+        ? 'Customer was not saved. Your account needs customer registration access.'
+        : error.code ? 'Customer was not saved. Check your connection and try again.' : error.message);
     } finally {
       setSavingCustomer(false);
     }
@@ -652,13 +556,23 @@ function StaffDashboard({ staffUser, onLogout }) {
     c.type.toLowerCase().includes(search.toLowerCase())
   );
 
-  // Filter customers
-  const filteredCustomers = customersList.filter(c =>
-    !search.trim() ||
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone.includes(search) ||
-    c.membership.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredCustomers = filterCustomers(customers, search);
+
+  if (customerTotal === null) {
+    return (
+      <main style={{ minHeight: '100vh', display: 'grid', placeContent: 'center', padding: 24, backgroundColor: '#070b12', color: '#f8fafc' }}>
+        {customersLoading ? (
+          <p role="status" style={{ color: '#cbd5e1' }}>Checking customer access…</p>
+        ) : (
+          <>
+            <p role="alert" style={{ color: '#fca5a5' }}>{customersError}</p>
+            <button type="button" onClick={() => setCustomerRefresh(value => value + 1)}>Retry</button>
+            <button type="button" onClick={onLogout}>Sign out</button>
+          </>
+        )}
+      </main>
+    );
+  }
 
   return (
     <div style={{
@@ -817,7 +731,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                 }}
               >
                 <IconOpenVisits />
-                <span>Open Visits</span>
+                <span>Open Visits (Demo)</span>
               </div>
 
               {/* Payments */}
@@ -901,7 +815,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder={activeTab === 'dashboard' ? 'Search...' : 'Search customers...'}
+                placeholder={activeTab === 'dashboard' ? 'Search...' : 'Search by customer name or ID'}
                 style={{
                   width: '100%',
                   backgroundColor: '#0d1627',
@@ -983,10 +897,10 @@ function StaffDashboard({ staffUser, onLogout }) {
                     zIndex: 20
                   }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>
-                      {staffUser?.fullName || 'Mao Posovandeth'}
+                      {staffUser?.fullName || 'Staff'}
                     </div>
                     <div style={{ fontSize: 11, color: '#10b981', margin: '2px 0 10px' }}>
-                      {staffUser?.email || 'posovandethmao@gmail.com'}
+                      {staffUser?.email}
                     </div>
                     <button
                       type="button"
@@ -1041,7 +955,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                   color: '#cbd5e1'
                 }}>
                   <IconCalendar />
-                  <span>Oct 26, 2026</span>
+                  <span>{new Date().toLocaleDateString('en-US', { dateStyle: 'medium', timeZone: 'Asia/Phnom_Penh' })}</span>
                 </div>
               </div>
 
@@ -1051,7 +965,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                 gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
                 gap: 16
               }}>
-                {/* Card 1: Total Members */}
+                {/* Card 1: Registered Customers */}
                 <div style={{
                   backgroundColor: '#0d1627',
                   border: '1px solid #1a273f',
@@ -1075,9 +989,9 @@ function StaffDashboard({ staffUser, onLogout }) {
                   <div>
                     <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Total Members</div>
                     <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
-                      {metrics.totalMembers}
+                      {customerTotal}
                     </div>
-                    <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>+5 this month</div>
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>Firestore customer records</div>
                   </div>
                 </div>
 
@@ -1107,7 +1021,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                     <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
                       {metrics.activeSubscriptions}
                     </div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>79% of total</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>Sample metric</div>
                   </div>
                 </div>
 
@@ -1137,7 +1051,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                     <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
                       {metrics.todayCheckins}
                     </div>
-                    <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>+12% vs yesterday</div>
+                    <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>Sample metric</div>
                   </div>
                 </div>
 
@@ -1167,7 +1081,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                     <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
                       {metrics.openVisits}
                     </div>
-                    <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>Currently inside</div>
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>Sample metric</div>
                   </div>
                 </div>
               </div>
@@ -1191,7 +1105,11 @@ function StaffDashboard({ staffUser, onLogout }) {
                     {/* Register Customer Button */}
                     <button
                       type="button"
-                      onClick={() => setShowRegisterModal(true)}
+                      onClick={() => {
+                        setRegError('');
+                        setRegSuccess('');
+                        setShowRegisterModal(true);
+                      }}
                       style={{
                         background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
                         border: 0,
@@ -1296,7 +1214,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                   flexDirection: 'column'
                 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: '#ffffff', marginBottom: 16 }}>
-                    Recent Check-ins
+                    Recent Check-ins (Demo)
                   </div>
 
                   {/* Table Column Headers */}
@@ -1377,14 +1295,18 @@ function StaffDashboard({ staffUser, onLogout }) {
                     Customers
                   </h1>
                   <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
-                    Total: {metrics.totalMembers}
+                    Total: {customerTotal}
                   </p>
                 </div>
 
                 {/* + Add Customer Button (Figma Screen 3) */}
                 <button
                   type="button"
-                  onClick={() => setShowRegisterModal(true)}
+                  onClick={() => {
+                        setRegError('');
+                        setRegSuccess('');
+                        setShowRegisterModal(true);
+                      }}
                   style={{
                     backgroundColor: '#10b981',
                     border: 0,
@@ -1415,7 +1337,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                 {/* Column Headers */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: '2fr 1.8fr 1.5fr 1.2fr 0.8fr',
+                  gridTemplateColumns: '2fr 1.4fr 1.7fr 2fr',
                   padding: '14px 20px',
                   borderBottom: '1px solid #19243a',
                   fontSize: 11,
@@ -1426,16 +1348,15 @@ function StaffDashboard({ staffUser, onLogout }) {
                 }}>
                   <div>NAME</div>
                   <div>PHONE</div>
-                  <div>MEMBERSHIP</div>
-                  <div>STATUS</div>
-                  <div style={{ textAlign: 'right' }}>ACTION</div>
+                  <div>EMAIL</div>
+                  <div>CUSTOMER ID</div>
                 </div>
 
                 {/* Table Body */}
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {filteredCustomers.length === 0 ? (
                     <div style={{ padding: '32px', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-                      No customers match your search.
+                      {search.trim() ? 'No customers match your search.' : 'No customers have been registered.'}
                     </div>
                   ) : (
                     filteredCustomers.map(cust => (
@@ -1443,7 +1364,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                         key={cust.id}
                         style={{
                           display: 'grid',
-                          gridTemplateColumns: '2fr 1.8fr 1.5fr 1.2fr 0.8fr',
+                          gridTemplateColumns: '2fr 1.4fr 1.7fr 2fr',
                           alignItems: 'center',
                           padding: '14px 20px',
                           borderBottom: '1px solid rgba(25, 36, 58, 0.6)',
@@ -1452,39 +1373,16 @@ function StaffDashboard({ staffUser, onLogout }) {
                       >
                         {/* Name */}
                         <div style={{ fontWeight: 600, color: '#f8fafc' }}>
-                          {cust.name}
+                          {cust.fullName}
                         </div>
 
                         {/* Phone */}
                         <div style={{ color: '#94a3b8', fontSize: 12 }}>
-                          {cust.phone}
+                          {cust.phone || '—'}
                         </div>
 
-                        {/* Membership */}
-                        <div style={{ color: '#cbd5e1', fontSize: 12 }}>
-                          {cust.membership}
-                        </div>
-
-                        {/* Status Badge */}
-                        <div>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '3px 10px',
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            backgroundColor: cust.status === 'Active' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                            color: cust.status === 'Active' ? '#34d399' : '#f59e0b',
-                            border: cust.status === 'Active' ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(245, 158, 11, 0.35)'
-                          }}>
-                            {cust.status}
-                          </span>
-                        </div>
-
-                        {/* Action ... */}
-                        <div style={{ textAlign: 'right', color: '#64748b', fontSize: 18, cursor: 'pointer', userSelect: 'none' }}>
-                          •••
-                        </div>
+                        <div style={{ color: '#cbd5e1', overflowWrap: 'anywhere' }}>{cust.email || '—'}</div>
+                        <div style={{ color: '#cbd5e1', overflowWrap: 'anywhere' }}>{cust.id}</div>
                       </div>
                     ))
                   )}
@@ -1540,6 +1438,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                 </label>
                 <input
                   required
+                  maxLength={120}
                   value={regForm.fullName}
                   onChange={e => setRegForm({ ...regForm, fullName: e.target.value })}
                   placeholder="e.g. Bopha Chea"
@@ -1561,6 +1460,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                   Phone Number
                 </label>
                 <input
+                  maxLength={30}
                   value={regForm.phone}
                   onChange={e => setRegForm({ ...regForm, phone: e.target.value })}
                   placeholder="012-889-900"
@@ -1583,6 +1483,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                 </label>
                 <input
                   type="email"
+                  maxLength={254}
                   value={regForm.email}
                   onChange={e => setRegForm({ ...regForm, email: e.target.value })}
                   placeholder="customer@example.com"
@@ -1668,7 +1569,7 @@ function StaffDashboard({ staffUser, onLogout }) {
             boxShadow: '0 25px 50px rgba(0,0,0,0.6)'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 17, fontWeight: 800, color: '#ffffff' }}>Gym Check-in</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: '#ffffff' }}>Gym Check-in (Demo)</div>
               <button
                 type="button"
                 onClick={() => setShowCheckinModal(false)}
@@ -1787,7 +1688,7 @@ function StaffDashboard({ staffUser, onLogout }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
                 <div style={{ fontSize: 17, fontWeight: 800, color: '#ffffff' }}>Active Open Visits</div>
-                <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>{metrics.openVisits} members currently inside</div>
+                <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>{metrics.openVisits} sample open visits</div>
               </div>
               <button
                 type="button"
@@ -1846,50 +1747,42 @@ function StaffDashboard({ staffUser, onLogout }) {
 }
 // =============================================================
 function AuthenticatedApp() {
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('staff') || sessionStorage.getItem('staff');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
-    }
-    return undefined;
-  });
+  const [user, setUser] = useState(undefined);
+  const [authError, setAuthError] = useState('');
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, firebaseUser => {
-      if (firebaseUser) {
-        setUser(firebaseUser);
-      } else if (!localStorage.getItem('staff') && !sessionStorage.getItem('staff')) {
-        setUser(null);
-      }
-    });
-    return unsubscribe;
+    // Remove legacy demo/API sessions; only Firebase restores a staff session.
+    for (const storage of [localStorage, sessionStorage]) {
+      storage.removeItem('token');
+      storage.removeItem('staff');
+    }
+    return onAuthStateChanged(auth, firebaseUser => {
+      setUser(firebaseUser ? {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        fullName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Staff'
+      } : null);
+    }, () => setAuthError('Unable to check your staff session. Please refresh and try again.'));
   }, []);
 
   const handleLogout = async () => {
     try {
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      if (token) {
-        await fetch('http://localhost:3001/api/auth/logout', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` }
-        });
-      }
       await signOut(auth);
-    } catch (e) {}
-
-    localStorage.removeItem('token');
-    localStorage.removeItem('staff');
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('staff');
-    setUser(null);
+    } catch {
+      setAuthError('Unable to sign out. Please try again.');
+    }
   };
+
+  if (authError) {
+    return <main className="session-error" role="alert"><p>{authError}</p><button onClick={() => window.location.reload()}>Retry</button></main>;
+  }
 
   if (user === undefined) {
     return <main style={{ minHeight: '100vh', background: '#070b12', color: '#fff', display: 'grid', placeItems: 'center' }}><p>Checking staff session...</p></main>;
   }
 
   if (!user) {
-    return <StaffLogin onLoginSuccess={staff => setUser(staff)} />;
+    return <StaffLogin />;
   }
 
   return <StaffDashboard staffUser={user} onLogout={handleLogout} />;
