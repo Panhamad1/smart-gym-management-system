@@ -4,10 +4,10 @@ import { walkInError } from './walk-in-data';
 
 const emptyCustomer = { fullName: '', phone: '', email: '' };
 
-export function WalkInCheckIn({ customers, onCheckIn, onViewOpenVisits }) {
-  const [mode, setMode] = useState('new');
-  const [search, setSearch] = useState('');
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
+export function WalkInCheckIn({ customers, initialCustomer, onCheckIn, onViewOpenVisits }) {
+  const [mode, setMode] = useState(initialCustomer ? 'existing' : 'new');
+  const [search, setSearch] = useState(initialCustomer?.fullName ?? '');
+  const [selectedCustomer, setSelectedCustomer] = useState(initialCustomer ?? null);
   const [form, setForm] = useState(emptyCustomer);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
