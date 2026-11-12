@@ -105,3 +105,11 @@ Keep the Firestore visit model (SCRUM-13), customer editing (SCRUM-15), visit im
 - Provide the Figma prototype link and genuine sprint-review/submission evidence. SCRUM-33 and SCRUM-28 track those gaps.
 - Implement/edit Firestore rules only after approval. Do not use sample attendance or subscription metrics for operational reporting.
 - Approve any merge to `main` explicitly because it triggers deployment. Production records, credentials, permissions and hosting were left untouched during the audit.
+
+## Sprint 1 follow-up
+
+The project owner confirmed that this pass covers staff login, customer registration, search and persistence. Customer editing (SCRUM-15), visits, checkout, payments, subscriptions and Sprint 2 selection are later work. The original Jira sprint goal above remains part of the historical record.
+
+The [shared Figma file](https://www.figma.com/design/yPHukVs5VbGyT4LXg2n6Tx/smart-gym-managements--Copy-?node-id=1-2) contains seven screen designs. The original audit found no prototype connections. The Sprint 1 follow-up added five verified connections across Staff Login, Dashboard and Customers. Login opens Dashboard, Customers and Dashboard link in both directions, and Log out on either screen opens Staff Login. SCRUM-33 tracks this evidence and the pending review, retrospective and Moodle records.
+
+Use the [manual test checklist](manual-test-checklist.md) to verify both the app and the prototype. The Firebase tests use the local demo project and synthetic records.

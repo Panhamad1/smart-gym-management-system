@@ -48,6 +48,18 @@ firebase emulators:exec --project demo-smart-gym --config firebase.emulator.json
 
 The suite covers valid and invalid login, sign-out, separate IDs for customers with the same name, fresh-client reads, denied reads and writes, and the manual test accounts. From `server`, run `npm test` for the legacy API checks. These verify missing signing-secret handling, anonymous request rejection, and the response when the local database is unavailable.
 
+## Figma prototype
+
+Open the [Staff Login frame](https://www.figma.com/design/yPHukVs5VbGyT4LXg2n6Tx/smart-gym-managements--Copy-?node-id=1-2) and click Present. Select the flow that starts on Staff Login.
+
+1. Click Login. The Dashboard should open.
+2. Click Customers. Customer Management should open.
+3. Click Dashboard. You should return to Dashboard.
+4. Click Log out from Dashboard. You should return to Staff Login.
+5. Go through Login and Customers again. Click Log out from Customers and confirm that Staff Login opens.
+
+This test checks prototype navigation. Use the local test app above to test credentials and customer persistence.
+
 ## Record results
 
 For each case, record the commit, date, expected result, actual result, and Pass or Fail in SCRUM-25. Use screenshots with synthetic records only. SCRUM-32 tracks the release decision, and SCRUM-33 tracks Figma and Sprint 1 evidence. Customer editing, persisted visits, checkout, payments, and subscriptions need separate tests once their scope is confirmed.
