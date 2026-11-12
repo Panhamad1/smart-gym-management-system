@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
+import { normalizeCustomer, filterCustomers, registerCustomer } from './customer-data';
 import { auth, db } from './firebase';
 import {
   signInWithEmailAndPassword,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
   signOut,
   onAuthStateChanged
 } from 'firebase/auth';
 import {
   collection,
-  addDoc,
-  getDocs,
-  serverTimestamp
+  onSnapshot
 } from 'firebase/firestore';
 
 // Dumbbell logo component matching |H| in Figma design
@@ -33,7 +35,7 @@ const DumbbellIcon = ({ className = "w-8 h-8", style = {} }) => (
 // =============================================================
 // SCREEN 1: STAFF LOGIN (Matches Figma Exactly)
 // =============================================================
-function StaffLogin({ onLoginSuccess }) {
+function StaffLogin() {
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -48,76 +50,19 @@ function StaffLogin({ onLoginSuccess }) {
 
     const cleanInput = usernameOrEmail.trim().toLowerCase();
 
-    // 1. Try Express backend authentication first (SCRUM-14)
     try {
-      const res = await fetch('http://localhost:3001/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usernameOrEmail: cleanInput, password, rememberMe })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        if (rememberMe) {
-          localStorage.setItem('token', data.token);
-          localStorage.setItem('staff', JSON.stringify(data.staff));
-        } else {
-          sessionStorage.setItem('token', data.token);
-          sessionStorage.setItem('staff', JSON.stringify(data.staff));
-        }
-        if (onLoginSuccess) onLoginSuccess(data.staff);
-        return;
-      }
-    } catch (e) {
-      // Backend offline or unreachable
-    }
-
-    // 2. Try Firebase Auth fallback
-    try {
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       await signInWithEmailAndPassword(auth, cleanInput, password);
-      return;
-    } catch (err) {
-      // 3. Seeded Staff Fallback (Mao Posovandeth, Chao, Admin)
-      if ((cleanInput === 'posovandethmao@gmail.com' || cleanInput === 'mao') && password === 'Mao@123') {
-        const staff = { email: 'posovandethmao@gmail.com', fullName: 'Mao Posovandeth', role: 'Product Owner' };
-        localStorage.setItem('staff', JSON.stringify(staff));
-        if (onLoginSuccess) onLoginSuccess(staff);
-        return;
-      }
-      if ((cleanInput === 'chao' || cleanInput === 'chao@smartgym.com') && password === 'Staff@123') {
-        const staff = { email: 'chao@smartgym.com', fullName: 'Chao Vanchhoeurng', role: 'Staff' };
-        localStorage.setItem('staff', JSON.stringify(staff));
-        if (onLoginSuccess) onLoginSuccess(staff);
-        return;
-      }
-      if ((cleanInput === 'admin' || cleanInput === 'admin@smartgym.com') && password === 'Admin@123') {
-        const staff = { email: 'admin@smartgym.com', fullName: 'System Administrator', role: 'Administrator' };
-        localStorage.setItem('staff', JSON.stringify(staff));
-        if (onLoginSuccess) onLoginSuccess(staff);
-        return;
-      }
-
-      // Criterion 1: Generic error message on invalid credentials
-      setError('Invalid username or password.');
+    } catch (error) {
+      setError(error.code === 'auth/network-request-failed'
+        ? 'Unable to connect. Check your internet connection and try again.'
+        : error.code === 'auth/too-many-requests'
+          ? 'Too many attempts. Please try again later.'
+          : 'Invalid email or password.');
     } finally {
       setLoading(false);
     }
   }
-
-  const fillQuick = (type) => {
-    if (type === 'po') {
-      setUsernameOrEmail('posovandethmao@gmail.com');
-      setPassword('Mao@123');
-      setError('');
-    } else if (type === 'staff') {
-      setUsernameOrEmail('chao@smartgym.com');
-      setPassword('Staff@123');
-      setError('');
-    } else {
-      setUsernameOrEmail('wrong@smartgym.com');
-      setPassword('WrongPassword123');
-      setError('');
-    }
-  };
 
   return (
     <div style={{
@@ -172,7 +117,7 @@ function StaffLogin({ onLoginSuccess }) {
           </div>
 
           <p style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.6, margin: '16px 0 24px' }}>
-            A modern gym management system designed for staff to handle members, subscriptions, check-ins, and payments with ease.
+            Sign in to register and find customer records.
           </p>
 
           <div style={{ display: 'flex', gap: 10, marginBottom: 28 }}>
@@ -187,35 +132,7 @@ function StaffLogin({ onLoginSuccess }) {
             </span>
           </div>
 
-          {/* Quick testing pills */}
-          <div style={{ borderTop: '1px solid #1e293b', paddingTop: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 10 }}>
-              ⚡ Quick Fill Seeded Staff (SCRUM-14):
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={() => fillQuick('po')}
-                style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.35)', color: '#6ee7b7', padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}
-              >
-                ✓ PO (posovandethmao@gmail.com / Mao@123)
-              </button>
-              <button
-                type="button"
-                onClick={() => fillQuick('staff')}
-                style={{ background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.35)', color: '#93c5fd', padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}
-              >
-                ✓ Staff (chao@smartgym.com / Staff@123)
-              </button>
-              <button
-                type="button"
-                onClick={() => fillQuick('invalid')}
-                style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)', color: '#fca5a5', padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}
-              >
-                ✗ Invalid Credentials
-              </button>
-            </div>
-          </div>
+          <p style={{ color: '#94a3b8', fontSize: 13 }}>Sign in with your authorized staff email and password. Contact your administrator if you need access.</p>
         </div>
 
         {/* Right Split Card */}
@@ -261,14 +178,16 @@ function StaffLogin({ onLoginSuccess }) {
               <p style={{ margin: '0 0 24px', fontSize: 12, color: '#94a3b8' }}>Welcome back! Please sign in to continue.</p>
 
               <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Username or Email */}
+                {/* Staff Email */}
                 <div>
                   <input
-                    type="text"
+                    type="email"
+                    aria-label="Staff email"
+                    autoComplete="username"
                     required
                     value={usernameOrEmail}
                     onChange={e => { setUsernameOrEmail(e.target.value); if (error) setError(''); }}
-                    placeholder="Username or Email"
+                    placeholder="Staff email"
                     style={{
                       width: '100%',
                       background: '#0d1624',
@@ -286,6 +205,8 @@ function StaffLogin({ onLoginSuccess }) {
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showPassword ? 'text' : 'password'}
+                    aria-label="Password"
+                    autoComplete="current-password"
                     required
                     value={password}
                     onChange={e => { setPassword(e.target.value); if (error) setError(''); }}
@@ -321,7 +242,7 @@ function StaffLogin({ onLoginSuccess }) {
                   </button>
                 </div>
 
-                {/* Remember me & Forgot password */}
+                {/* Remember me */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#94a3b8', margin: 0, cursor: 'pointer' }}>
                     <input
@@ -332,16 +253,6 @@ function StaffLogin({ onLoginSuccess }) {
                     />
                     <span>Remember me</span>
                   </label>
-                  <a
-                    href="#forgot"
-                    onClick={e => {
-                      e.preventDefault();
-                      alert('Password Reset Notice: Please contact System Administrator (admin@smartgym.com) or Product Owner (posovandethmao@gmail.com).');
-                    }}
-                    style={{ color: '#10b981', textDecoration: 'none', fontWeight: 600 }}
-                  >
-                    Forgot password?
-                  </a>
                 </div>
 
                 {/* Submit button */}
@@ -414,45 +325,6 @@ const IconCustomers = () => (
   </svg>
 );
 
-const IconPlans = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-    <polyline points="14 2 14 8 20 8" />
-    <line x1="16" y1="13" x2="8" y2="13" />
-    <line x1="16" y1="17" x2="8" y2="17" />
-    <line x1="10" y1="9" x2="8" y2="9" />
-  </svg>
-);
-
-const IconCheckin = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" />
-    <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
-  </svg>
-);
-
-const IconOpenVisits = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-    <polyline points="10 17 15 12 10 7" />
-    <line x1="15" y1="12" x2="3" y2="12" />
-  </svg>
-);
-
-const IconPayments = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="5" width="20" height="14" rx="2" />
-    <line x1="2" y1="10" x2="22" y2="10" />
-  </svg>
-);
-
-const IconSettings = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-  </svg>
-);
-
 const IconLogout = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -465,13 +337,6 @@ const IconSearch = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="11" cy="11" r="8" />
     <line x1="21" y1="21" x2="16.65" y2="16.65" />
-  </svg>
-);
-
-const IconBell = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
   </svg>
 );
 
@@ -490,13 +355,6 @@ const IconUserSilhouette = () => (
   </svg>
 );
 
-const IconClock = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" />
-    <polyline points="12 6 12 12 16 14" />
-  </svg>
-);
-
 const IconUserPlus = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -506,49 +364,42 @@ const IconUserPlus = () => (
   </svg>
 );
 
-const IconIdCard = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="4" width="20" height="16" rx="2" />
-    <line x1="6" y1="8" x2="10" y2="8" />
-    <line x1="6" y1="12" x2="14" y2="12" />
-    <line x1="6" y1="16" x2="12" y2="16" />
-    <circle cx="17" cy="9" r="2" />
-  </svg>
-);
-
 function StaffDashboard({ staffUser, onLogout }) {
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'customers'
   const [search, setSearch] = useState('');
   const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [showCheckinModal, setShowCheckinModal] = useState(false);
-  const [showVisitsModal, setShowVisitsModal] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
-  // Core metrics matching Figma Screen 2
-  const [metrics, setMetrics] = useState({
-    totalMembers: 124,
-    activeSubscriptions: 98,
-    todayCheckins: 42,
-    openVisits: 18
-  });
-
-  // Recent Check-ins matching Figma Screen 2
-  const [checkins, setCheckins] = useState([
-    { id: 1, name: 'Sok Chan', time: '10:24 AM', type: 'Member' },
-    { id: 2, name: 'Da Ra', time: '10:12 AM', type: 'Member' },
-    { id: 3, name: 'Vireak S.', time: '09:58 AM', type: 'Walk-in' },
-    { id: 4, name: 'Chea Srey', time: '09:45 AM', type: 'Member' },
-    { id: 5, name: 'Tith Dara', time: '09:32 AM', type: 'Member' }
-  ]);
-
-  // Customers Directory matching Figma Screen 3
-  const [customersList, setCustomersList] = useState([
-    { id: 1, name: 'Sok Chan', phone: '012 345 678', membership: 'Monthly', status: 'Active' },
-    { id: 2, name: 'Da Ra', phone: '018 765 432', membership: 'Yearly', status: 'Active' },
-    { id: 3, name: 'Virak S.', phone: '077 668 999', membership: 'Walk-In', status: 'Open' },
-    { id: 4, name: 'Chea Srey', phone: '096 111 222', membership: 'Monthly', status: 'Active' },
-    { id: 5, name: 'Tith Dara', phone: '012 222 333', membership: 'Yearly', status: 'Active' }
-  ]);
+  const [customers, setCustomers] = useState([]);
+  const [customerTotal, setCustomerTotal] = useState(null);
+  const [customersLoading, setCustomersLoading] = useState(true);
+  const [customersError, setCustomersError] = useState('');
+  const [customerRefresh, setCustomerRefresh] = useState(0);
+  useEffect(() => {
+    setCustomersLoading(true);
+    setCustomersError('');
+    const loadingTimeout = setTimeout(() => {
+      setCustomersError('Unable to reach the customer database. Check your connection, then retry.');
+      setCustomerTotal(null);
+      setCustomersLoading(false);
+    }, 10000);
+    const unsubscribe = onSnapshot(collection(db, 'customers'), { includeMetadataChanges: true }, snapshot => {
+      if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+      clearTimeout(loadingTimeout);
+      setCustomersError('');
+      setCustomers(snapshot.docs.map(doc => normalizeCustomer(doc.id, doc.data())));
+      setCustomerTotal(snapshot.size);
+      setCustomersLoading(false);
+    }, error => {
+      clearTimeout(loadingTimeout);
+      setCustomersError(error.code === 'permission-denied'
+        ? 'Your account does not have customer access. Contact your administrator.'
+        : 'Unable to load customers. Check your connection and retry.');
+      setCustomerTotal(null);
+      setCustomersLoading(false);
+    });
+    return () => { clearTimeout(loadingTimeout); unsubscribe(); };
+  }, [customerRefresh]);
 
   // Customer registration form state
   const [regForm, setRegForm] = useState({ fullName: '', phone: '', email: '' });
@@ -556,117 +407,51 @@ function StaffDashboard({ staffUser, onLogout }) {
   const [regSuccess, setRegSuccess] = useState('');
   const [regError, setRegError] = useState('');
 
-  // Quick check-in form state
-  const [checkinName, setCheckinName] = useState('');
-  const [checkinType, setCheckinType] = useState('Member');
-
   // Handle register customer (SCRUM-3)
   const handleRegisterCustomer = async (e) => {
     e.preventDefault();
+    if (savingCustomer) return;
     setRegError('');
     setRegSuccess('');
 
-    const name = regForm.fullName.trim();
-    if (!name) {
-      setRegError('Please enter a customer name.');
-      return;
-    }
-
     setSavingCustomer(true);
     try {
-      // 1. Try Express backend if token exists
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      if (token) {
-        try {
-          await fetch('http://localhost:3001/api/customers', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-            body: JSON.stringify({ fullName: name, phone: regForm.phone, email: regForm.email })
-          });
-        } catch (e) {}
-      }
-
-      // 2. Try Firestore fallback
-      try {
-        await addDoc(collection(db, 'customers'), {
-          name,
-          phone: regForm.phone.trim() || null,
-          email: regForm.email.trim() || null,
-          createdAt: serverTimestamp()
-        });
-      } catch (e) {}
-
-      // Add to customers directory
-      const newCust = {
-        id: Date.now(),
-        name,
-        phone: regForm.phone.trim() || 'N/A',
-        membership: 'Walk-In',
-        status: 'Open'
-      };
-      setCustomersList([newCust, ...customersList]);
-
-      // Increment metrics
-      setMetrics(prev => ({ ...prev, totalMembers: prev.totalMembers + 1 }));
-      setRegSuccess('Customer "' + name + '" registered successfully.');
+      const id = await registerCustomer(db, regForm);
+      setRegSuccess('Customer registered. ID: ' + id);
       setRegForm({ fullName: '', phone: '', email: '' });
-      setTimeout(() => {
-        setRegSuccess('');
-        setShowRegisterModal(false);
-      }, 1500);
-    } catch (err) {
-      setRegError('Error saving customer.');
+    } catch (error) {
+      setRegError(error.code === 'permission-denied'
+        ? 'Customer was not saved. Your account needs customer registration access.'
+        : error.code ? 'Customer was not saved. Check your connection and try again.' : error.message);
     } finally {
       setSavingCustomer(false);
     }
   };
 
-  // Handle quick check-in
-  const handlePerformCheckin = (e) => {
-    e.preventDefault();
-    if (!checkinName.trim()) return;
+  const filteredCustomers = filterCustomers(customers, search);
 
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const newEntry = {
-      id: Date.now(),
-      name: checkinName.trim(),
-      time: timeStr,
-      type: checkinType
-    };
-
-    setCheckins([newEntry, ...checkins]);
-    setMetrics(prev => ({
-      ...prev,
-      todayCheckins: prev.todayCheckins + 1,
-      openVisits: prev.openVisits + 1
-    }));
-    setCheckinName('');
-    setShowCheckinModal(false);
-  };
-
-  // Filter check-ins
-  const filteredCheckins = checkins.filter(c =>
-    !search.trim() ||
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.type.toLowerCase().includes(search.toLowerCase())
-  );
-
-  // Filter customers
-  const filteredCustomers = customersList.filter(c =>
-    !search.trim() ||
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone.includes(search) ||
-    c.membership.toLowerCase().includes(search.toLowerCase())
-  );
+  if (customerTotal === null) {
+    return (
+      <main style={{ minHeight: '100vh', display: 'grid', placeContent: 'center', padding: 24, backgroundColor: '#070b12', color: '#f8fafc' }}>
+        {customersLoading ? (
+          <p role="status" style={{ color: '#cbd5e1' }}>Checking customer access…</p>
+        ) : (
+          <>
+            <p role="alert" style={{ color: '#fca5a5' }}>{customersError}</p>
+            <button type="button" onClick={() => setCustomerRefresh(value => value + 1)}>Retry</button>
+            <button type="button" onClick={onLogout}>Sign out</button>
+          </>
+        )}
+      </main>
+    );
+  }
 
   return (
-    <div style={{
+    <div className="staff-workspace" style={{
       minHeight: '100vh',
       backgroundColor: '#060911',
       color: '#f8fafc',
       fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
-      padding: '24px 28px',
       boxSizing: 'border-box'
     }}>
       {/* Top Breadcrumb / Title Label */}
@@ -678,7 +463,7 @@ function StaffDashboard({ staffUser, onLogout }) {
       </h2>
 
       {/* Main Outer App Frame */}
-      <div style={{
+      <div className="staff-layout" style={{
         backgroundColor: '#0c1322',
         border: '1px solid #1a263d',
         borderRadius: 20,
@@ -691,8 +476,7 @@ function StaffDashboard({ staffUser, onLogout }) {
         {/* ========================================================= */}
         {/* LEFT SIDEBAR                                              */}
         {/* ========================================================= */}
-        <aside style={{
-          width: 230,
+        <aside className="staff-sidebar" style={{
           backgroundColor: '#080d19',
           borderRight: '1px solid #192338',
           padding: '24px 16px',
@@ -721,12 +505,13 @@ function StaffDashboard({ staffUser, onLogout }) {
             </div>
 
             {/* Main Nav Links */}
-            <nav style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <nav className="staff-nav" aria-label="Staff navigation" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {/* Dashboard Nav Item */}
-              <div
+              <button type="button" aria-current={activeTab === 'dashboard' ? 'page' : undefined}
                 onClick={() => { setActiveTab('dashboard'); setSearch(''); }}
                 style={{
                   display: 'flex',
+                  textAlign: 'left',
                   alignItems: 'center',
                   gap: 12,
                   padding: '10px 14px',
@@ -742,13 +527,14 @@ function StaffDashboard({ staffUser, onLogout }) {
               >
                 <IconDashboard />
                 <span>Dashboard</span>
-              </div>
+              </button>
 
               {/* Customers Nav Item (Active Pill matches Screen 3) */}
-              <div
+              <button type="button" aria-current={activeTab === 'customers' ? 'page' : undefined}
                 onClick={() => { setActiveTab('customers'); setSearch(''); }}
                 style={{
                   display: 'flex',
+                  textAlign: 'left',
                   alignItems: 'center',
                   gap: 12,
                   padding: '10px 14px',
@@ -764,103 +550,19 @@ function StaffDashboard({ staffUser, onLogout }) {
               >
                 <IconCustomers />
                 <span>Customers</span>
-              </div>
+              </button>
 
-              {/* Plans & Subscriptions */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '10px 14px',
-                borderRadius: 10,
-                color: '#94a3b8',
-                fontSize: 13,
-                fontWeight: 500,
-                cursor: 'default'
-              }}>
-                <IconPlans />
-                <span>Plans &amp; Subscriptions</span>
-              </div>
-
-              {/* Check-in */}
-              <div
-                onClick={() => setShowCheckinModal(true)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '10px 14px',
-                  borderRadius: 10,
-                  color: '#94a3b8',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: 'pointer'
-                }}
-              >
-                <IconCheckin />
-                <span>Check-in</span>
-              </div>
-
-              {/* Open Visits */}
-              <div
-                onClick={() => setShowVisitsModal(true)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '10px 14px',
-                  borderRadius: 10,
-                  color: '#94a3b8',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: 'pointer'
-                }}
-              >
-                <IconOpenVisits />
-                <span>Open Visits</span>
-              </div>
-
-              {/* Payments */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '10px 14px',
-                borderRadius: 10,
-                color: '#94a3b8',
-                fontSize: 13,
-                fontWeight: 500,
-                cursor: 'default'
-              }}>
-                <IconPayments />
-                <span>Payments</span>
-              </div>
             </nav>
           </div>
 
           {/* Bottom Nav Links */}
           <div style={{ borderTop: '1px solid #192338', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {/* Settings */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '10px 14px',
-              borderRadius: 10,
-              color: '#94a3b8',
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: 'default'
-            }}>
-              <IconSettings />
-              <span>Settings</span>
-            </div>
-
             {/* Log out */}
-            <div
+            <button type="button" className="staff-logout"
               onClick={onLogout}
               style={{
                 display: 'flex',
+                textAlign: 'left',
                 alignItems: 'center',
                 gap: 12,
                 padding: '10px 14px',
@@ -873,18 +575,18 @@ function StaffDashboard({ staffUser, onLogout }) {
             >
               <IconLogout />
               <span>Log out</span>
-            </div>
+            </button>
           </div>
         </aside>
 
         {/* ========================================================= */}
         {/* RIGHT MAIN CONTENT AREA                                   */}
         {/* ========================================================= */}
-        <main style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 24, overflowY: 'auto' }}>
+        <main className="staff-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24, overflowY: 'auto' }}>
           
-          {/* Top Bar: Search, Notification Bell, Staff Profile */}
+          {/* Customer search and staff profile */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-            {/* Search Input */}
+            {activeTab === 'customers' ? (
             <div style={{ position: 'relative', width: 280, maxWidth: '100%' }}>
               <div style={{
                 position: 'absolute',
@@ -901,7 +603,8 @@ function StaffDashboard({ staffUser, onLogout }) {
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder={activeTab === 'dashboard' ? 'Search...' : 'Search customers...'}
+                aria-label="Search by customer name or ID"
+                placeholder="Search by customer name or ID"
                 style={{
                   width: '100%',
                   backgroundColor: '#0d1627',
@@ -916,24 +619,10 @@ function StaffDashboard({ staffUser, onLogout }) {
               />
             </div>
 
-            {/* Right Header: Bell & Staff Profile */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              {/* Notification Bell */}
-              <button
-                type="button"
-                style={{
-                  background: 'transparent',
-                  border: 0,
-                  color: '#94a3b8',
-                  cursor: 'pointer',
-                  padding: 4,
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-              >
-                <IconBell />
-              </button>
+            ) : <div />}
 
+            {/* Staff profile */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               {/* Staff Profile Badge */}
               <div style={{ position: 'relative' }}>
                 <div
@@ -983,10 +672,10 @@ function StaffDashboard({ staffUser, onLogout }) {
                     zIndex: 20
                   }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>
-                      {staffUser?.fullName || 'Mao Posovandeth'}
+                      {staffUser?.fullName || 'Staff'}
                     </div>
                     <div style={{ fontSize: 11, color: '#10b981', margin: '2px 0 10px' }}>
-                      {staffUser?.email || 'posovandethmao@gmail.com'}
+                      {staffUser?.email}
                     </div>
                     <button
                       type="button"
@@ -1023,7 +712,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                     Dashboard
                   </h1>
                   <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
-                    Here's what's happening at your gym today.
+                    View your customer count or register a customer.
                   </p>
                 </div>
 
@@ -1041,17 +730,17 @@ function StaffDashboard({ staffUser, onLogout }) {
                   color: '#cbd5e1'
                 }}>
                   <IconCalendar />
-                  <span>Oct 26, 2026</span>
+                  <span>{new Date().toLocaleDateString('en-US', { dateStyle: 'medium', timeZone: 'Asia/Phnom_Penh' })}</span>
                 </div>
               </div>
 
-              {/* 4 METRIC CARDS */}
+              {/* Registered customer count */}
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
                 gap: 16
               }}>
-                {/* Card 1: Total Members */}
+                {/* Card 1: Registered Customers */}
                 <div style={{
                   backgroundColor: '#0d1627',
                   border: '1px solid #1a273f',
@@ -1075,105 +764,16 @@ function StaffDashboard({ staffUser, onLogout }) {
                   <div>
                     <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Total Members</div>
                     <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
-                      {metrics.totalMembers}
+                      {customerTotal}
                     </div>
-                    <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>+5 this month</div>
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>Firestore customer records</div>
                   </div>
                 </div>
 
-                {/* Card 2: Active Subscriptions */}
-                <div style={{
-                  backgroundColor: '#0d1627',
-                  border: '1px solid #1a273f',
-                  borderRadius: 14,
-                  padding: '18px 20px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 12
-                }}>
-                  <div style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    backgroundColor: 'rgba(59, 130, 246, 0.12)',
-                    color: '#3b82f6',
-                    display: 'grid',
-                    placeItems: 'center'
-                  }}>
-                    <IconPlans />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Active Subscriptions</div>
-                    <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
-                      {metrics.activeSubscriptions}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>79% of total</div>
-                  </div>
-                </div>
-
-                {/* Card 3: Today's Check-ins */}
-                <div style={{
-                  backgroundColor: '#0d1627',
-                  border: '1px solid #1a273f',
-                  borderRadius: 14,
-                  padding: '18px 20px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 12
-                }}>
-                  <div style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    backgroundColor: 'rgba(168, 85, 247, 0.12)',
-                    color: '#a855f7',
-                    display: 'grid',
-                    placeItems: 'center'
-                  }}>
-                    <IconClock />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Today's Check-ins</div>
-                    <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
-                      {metrics.todayCheckins}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>+12% vs yesterday</div>
-                  </div>
-                </div>
-
-                {/* Card 4: Open Visits */}
-                <div style={{
-                  backgroundColor: '#0d1627',
-                  border: '1px solid #1a273f',
-                  borderRadius: 14,
-                  padding: '18px 20px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 12
-                }}>
-                  <div style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-                    color: '#f59e0b',
-                    display: 'grid',
-                    placeItems: 'center'
-                  }}>
-                    <IconOpenVisits />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Open Visits</div>
-                    <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', margin: '4px 0 2px' }}>
-                      {metrics.openVisits}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>Currently inside</div>
-                  </div>
-                </div>
               </div>
 
-              {/* ROW 2: QUICK ACTIONS & RECENT CHECK-INS */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 320px) 1fr', gap: 20 }}>
+              {/* Customer actions */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px)', gap: 20 }}>
                 {/* Quick Actions Panel */}
                 <div style={{
                   backgroundColor: '#0d1627',
@@ -1191,7 +791,11 @@ function StaffDashboard({ staffUser, onLogout }) {
                     {/* Register Customer Button */}
                     <button
                       type="button"
-                      onClick={() => setShowRegisterModal(true)}
+                      onClick={() => {
+                        setRegError('');
+                        setRegSuccess('');
+                        setShowRegisterModal(true);
+                      }}
                       style={{
                         background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
                         border: 0,
@@ -1220,145 +824,9 @@ function StaffDashboard({ staffUser, onLogout }) {
                       <span>Register Customer</span>
                     </button>
 
-                    {/* Check-in Button */}
-                    <button
-                      type="button"
-                      onClick={() => setShowCheckinModal(true)}
-                      style={{
-                        background: 'linear-gradient(90deg, #3b82f6 0%, #2563eb 100%)',
-                        border: 0,
-                        borderRadius: 12,
-                        color: '#ffffff',
-                        padding: '14px 18px',
-                        fontSize: 13,
-                        fontWeight: 700,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        cursor: 'pointer',
-                        boxShadow: '0 4px 14px rgba(59, 130, 246, 0.25)'
-                      }}
-                    >
-                      <div style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 8,
-                        backgroundColor: 'rgba(255, 255, 255, 0.15)',
-                        display: 'grid',
-                        placeItems: 'center'
-                      }}>
-                        <IconIdCard />
-                      </div>
-                      <span>Check-in</span>
+                    <button type="button" className="customer-directory-action" onClick={() => setActiveTab('customers')}>
+                      View Customers
                     </button>
-
-                    {/* Open Visits Button */}
-                    <button
-                      type="button"
-                      onClick={() => setShowVisitsModal(true)}
-                      style={{
-                        background: 'linear-gradient(90deg, #8b5cf6 0%, #7c3aed 100%)',
-                        border: 0,
-                        borderRadius: 12,
-                        color: '#ffffff',
-                        padding: '14px 18px',
-                        fontSize: 13,
-                        fontWeight: 700,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        cursor: 'pointer',
-                        boxShadow: '0 4px 14px rgba(139, 92, 246, 0.25)'
-                      }}
-                    >
-                      <div style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 8,
-                        backgroundColor: 'rgba(255, 255, 255, 0.15)',
-                        display: 'grid',
-                        placeItems: 'center'
-                      }}>
-                        <IconOpenVisits />
-                      </div>
-                      <span>Open Visits</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Recent Check-ins Panel */}
-                <div style={{
-                  backgroundColor: '#0d1627',
-                  border: '1px solid #1a273f',
-                  borderRadius: 14,
-                  padding: 22,
-                  display: 'flex',
-                  flexDirection: 'column'
-                }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: '#ffffff', marginBottom: 16 }}>
-                    Recent Check-ins
-                  </div>
-
-                  {/* Table Column Headers */}
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '2fr 1.2fr 1fr',
-                    padding: '0 8px 10px',
-                    borderBottom: '1px solid #19243a',
-                    fontSize: 12,
-                    color: '#64748b',
-                    fontWeight: 600
-                  }}>
-                    <div>Name</div>
-                    <div>Time</div>
-                    <div style={{ textAlign: 'right' }}>Type</div>
-                  </div>
-
-                  {/* Table Rows */}
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {filteredCheckins.length === 0 ? (
-                      <div style={{ padding: '24px 0', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-                        No check-ins match your search.
-                      </div>
-                    ) : (
-                      filteredCheckins.map(item => (
-                        <div
-                          key={item.id}
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: '2fr 1.2fr 1fr',
-                            alignItems: 'center',
-                            padding: '12px 8px',
-                            borderBottom: '1px solid rgba(25, 36, 58, 0.6)',
-                            fontSize: 13
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{
-                              width: 28,
-                              height: 28,
-                              borderRadius: '50%',
-                              backgroundColor: '#1a273f',
-                              color: '#64748b',
-                              display: 'grid',
-                              placeItems: 'center',
-                              flexShrink: 0
-                            }}>
-                              <IconUserSilhouette />
-                            </div>
-                            <span style={{ fontWeight: 600, color: '#f8fafc' }}>
-                              {item.name}
-                            </span>
-                          </div>
-                          <div style={{ color: '#94a3b8', fontSize: 12 }}>
-                            {item.time}
-                          </div>
-                          <div style={{ textAlign: 'right', color: '#38bdf8', fontWeight: 600, fontSize: 12 }}>
-                            {item.type}
-                          </div>
-                        </div>
-                      ))
-                    )}
                   </div>
                 </div>
               </div>
@@ -1377,14 +845,18 @@ function StaffDashboard({ staffUser, onLogout }) {
                     Customers
                   </h1>
                   <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
-                    Total: {metrics.totalMembers}
+                    Total: {customerTotal}
                   </p>
                 </div>
 
                 {/* + Add Customer Button (Figma Screen 3) */}
                 <button
                   type="button"
-                  onClick={() => setShowRegisterModal(true)}
+                  onClick={() => {
+                        setRegError('');
+                        setRegSuccess('');
+                        setShowRegisterModal(true);
+                      }}
                   style={{
                     backgroundColor: '#10b981',
                     border: 0,
@@ -1415,7 +887,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                 {/* Column Headers */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: '2fr 1.8fr 1.5fr 1.2fr 0.8fr',
+                  gridTemplateColumns: '2fr 1.4fr 1.7fr 2fr',
                   padding: '14px 20px',
                   borderBottom: '1px solid #19243a',
                   fontSize: 11,
@@ -1426,16 +898,15 @@ function StaffDashboard({ staffUser, onLogout }) {
                 }}>
                   <div>NAME</div>
                   <div>PHONE</div>
-                  <div>MEMBERSHIP</div>
-                  <div>STATUS</div>
-                  <div style={{ textAlign: 'right' }}>ACTION</div>
+                  <div>EMAIL</div>
+                  <div>CUSTOMER ID</div>
                 </div>
 
                 {/* Table Body */}
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {filteredCustomers.length === 0 ? (
                     <div style={{ padding: '32px', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-                      No customers match your search.
+                      {search.trim() ? 'No customers match your search.' : 'No customers have been registered.'}
                     </div>
                   ) : (
                     filteredCustomers.map(cust => (
@@ -1443,7 +914,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                         key={cust.id}
                         style={{
                           display: 'grid',
-                          gridTemplateColumns: '2fr 1.8fr 1.5fr 1.2fr 0.8fr',
+                          gridTemplateColumns: '2fr 1.4fr 1.7fr 2fr',
                           alignItems: 'center',
                           padding: '14px 20px',
                           borderBottom: '1px solid rgba(25, 36, 58, 0.6)',
@@ -1452,39 +923,16 @@ function StaffDashboard({ staffUser, onLogout }) {
                       >
                         {/* Name */}
                         <div style={{ fontWeight: 600, color: '#f8fafc' }}>
-                          {cust.name}
+                          {cust.fullName}
                         </div>
 
                         {/* Phone */}
                         <div style={{ color: '#94a3b8', fontSize: 12 }}>
-                          {cust.phone}
+                          {cust.phone || '—'}
                         </div>
 
-                        {/* Membership */}
-                        <div style={{ color: '#cbd5e1', fontSize: 12 }}>
-                          {cust.membership}
-                        </div>
-
-                        {/* Status Badge */}
-                        <div>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '3px 10px',
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            backgroundColor: cust.status === 'Active' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                            color: cust.status === 'Active' ? '#34d399' : '#f59e0b',
-                            border: cust.status === 'Active' ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(245, 158, 11, 0.35)'
-                          }}>
-                            {cust.status}
-                          </span>
-                        </div>
-
-                        {/* Action ... */}
-                        <div style={{ textAlign: 'right', color: '#64748b', fontSize: 18, cursor: 'pointer', userSelect: 'none' }}>
-                          •••
-                        </div>
+                        <div style={{ color: '#cbd5e1', overflowWrap: 'anywhere' }}>{cust.email || '—'}</div>
+                        <div style={{ color: '#cbd5e1', overflowWrap: 'anywhere' }}>{cust.id}</div>
                       </div>
                     ))
                   )}
@@ -1509,7 +957,7 @@ function StaffDashboard({ staffUser, onLogout }) {
           zIndex: 100,
           padding: 16
         }}>
-          <div style={{
+          <div role="dialog" aria-modal="true" aria-labelledby="customer-form-title" style={{
             backgroundColor: '#0c1322',
             border: '1px solid #1e293b',
             borderRadius: 16,
@@ -1519,9 +967,11 @@ function StaffDashboard({ staffUser, onLogout }) {
             boxShadow: '0 25px 50px rgba(0,0,0,0.6)'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 17, fontWeight: 800, color: '#ffffff' }}>Register New Customer</div>
+              <div id="customer-form-title" style={{ fontSize: 17, fontWeight: 800, color: '#ffffff' }}>Register New Customer</div>
               <button
                 type="button"
+                aria-label="Close customer registration"
+                disabled={savingCustomer}
                 onClick={() => setShowRegisterModal(false)}
                 style={{ background: 'transparent', border: 0, color: '#94a3b8', fontSize: 18, cursor: 'pointer' }}
               >
@@ -1530,16 +980,18 @@ function StaffDashboard({ staffUser, onLogout }) {
             </div>
 
             <p style={{ margin: '0 0 18px', fontSize: 12, color: '#94a3b8' }}>
-              Add a walk-in or new gym member record directly to the database.
+              Enter the customer’s name and any contact details.
             </p>
 
             <form onSubmit={handleRegisterCustomer} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
+                <label htmlFor="customer-fullName" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
                   Full Name <span style={{ color: '#f87171' }}>*</span>
                 </label>
                 <input
                   required
+                  maxLength={120}
+                  id="customer-fullName"
                   value={regForm.fullName}
                   onChange={e => setRegForm({ ...regForm, fullName: e.target.value })}
                   placeholder="e.g. Bopha Chea"
@@ -1557,10 +1009,12 @@ function StaffDashboard({ staffUser, onLogout }) {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
+                <label htmlFor="customer-phone" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
                   Phone Number
                 </label>
                 <input
+                  maxLength={30}
+                  id="customer-phone"
                   value={regForm.phone}
                   onChange={e => setRegForm({ ...regForm, phone: e.target.value })}
                   placeholder="012-889-900"
@@ -1578,11 +1032,13 @@ function StaffDashboard({ staffUser, onLogout }) {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
+                <label htmlFor="customer-email" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
                   Email Address
                 </label>
                 <input
                   type="email"
+                  maxLength={254}
+                  id="customer-email"
                   value={regForm.email}
                   onChange={e => setRegForm({ ...regForm, email: e.target.value })}
                   placeholder="customer@example.com"
@@ -1600,15 +1056,16 @@ function StaffDashboard({ staffUser, onLogout }) {
               </div>
 
               {regError && (
-                <div style={{ color: '#f87171', fontSize: 12, fontWeight: 600 }}>⚠️ {regError}</div>
+                <div role="alert" style={{ color: '#f87171', fontSize: 12, fontWeight: 600 }}>{regError}</div>
               )}
               {regSuccess && (
-                <div style={{ color: '#34d399', fontSize: 12, fontWeight: 600 }}>✓ {regSuccess}</div>
+                <div role="status" style={{ color: '#34d399', fontSize: 12, fontWeight: 600 }}>{regSuccess}</div>
               )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
                 <button
                   type="button"
+                  disabled={savingCustomer}
                   onClick={() => setShowRegisterModal(false)}
                   style={{
                     backgroundColor: '#1e293b',
@@ -1644,252 +1101,47 @@ function StaffDashboard({ staffUser, onLogout }) {
         </div>
       )}
 
-      {/* ========================================================= */}
-      {/* MODAL: CHECK-IN QUICK ACTION                              */}
-      {/* ========================================================= */}
-      {showCheckinModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.75)',
-          backdropFilter: 'blur(4px)',
-          display: 'grid',
-          placeItems: 'center',
-          zIndex: 100,
-          padding: 16
-        }}>
-          <div style={{
-            backgroundColor: '#0c1322',
-            border: '1px solid #1e293b',
-            borderRadius: 16,
-            width: '100%',
-            maxWidth: 400,
-            padding: 24,
-            boxShadow: '0 25px 50px rgba(0,0,0,0.6)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 17, fontWeight: 800, color: '#ffffff' }}>Gym Check-in</div>
-              <button
-                type="button"
-                onClick={() => setShowCheckinModal(false)}
-                style={{ background: 'transparent', border: 0, color: '#94a3b8', fontSize: 18, cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handlePerformCheckin} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
-                  Member / Visitor Name
-                </label>
-                <input
-                  required
-                  value={checkinName}
-                  onChange={e => setCheckinName(e.target.value)}
-                  placeholder="e.g. Chan Dara"
-                  style={{
-                    width: '100%',
-                    backgroundColor: '#070d18',
-                    border: '1px solid #1e293b',
-                    borderRadius: 8,
-                    color: '#fff',
-                    padding: '10px 12px',
-                    fontSize: 13,
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
-                  Entry Type
-                </label>
-                <select
-                  value={checkinType}
-                  onChange={e => setCheckinType(e.target.value)}
-                  style={{
-                    width: '100%',
-                    backgroundColor: '#070d18',
-                    border: '1px solid #1e293b',
-                    borderRadius: 8,
-                    color: '#fff',
-                    padding: '10px 12px',
-                    fontSize: 13,
-                    boxSizing: 'border-box'
-                  }}
-                >
-                  <option value="Member">Member</option>
-                  <option value="Walk-in">Walk-in ($2.00 fee)</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => setShowCheckinModal(false)}
-                  style={{
-                    backgroundColor: '#1e293b',
-                    border: '1px solid #334155',
-                    color: '#cbd5e1',
-                    borderRadius: 8,
-                    padding: '10px 16px',
-                    fontSize: 13,
-                    cursor: 'pointer'
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  style={{
-                    background: '#3b82f6',
-                    border: 0,
-                    borderRadius: 8,
-                    color: '#ffffff',
-                    padding: '10px 18px',
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  Confirm Check-in
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================= */}
-      {/* MODAL: OPEN VISITS                                        */}
-      {/* ========================================================= */}
-      {showVisitsModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.75)',
-          backdropFilter: 'blur(4px)',
-          display: 'grid',
-          placeItems: 'center',
-          zIndex: 100,
-          padding: 16
-        }}>
-          <div style={{
-            backgroundColor: '#0c1322',
-            border: '1px solid #1e293b',
-            borderRadius: 16,
-            width: '100%',
-            maxWidth: 440,
-            padding: 24,
-            boxShadow: '0 25px 50px rgba(0,0,0,0.6)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div>
-                <div style={{ fontSize: 17, fontWeight: 800, color: '#ffffff' }}>Active Open Visits</div>
-                <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>{metrics.openVisits} members currently inside</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowVisitsModal(false)}
-                style={{ background: 'transparent', border: 0, color: '#94a3b8', fontSize: 18, cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
-              {checkins.map(item => (
-                <div
-                  key={item.id}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '10px 14px',
-                    backgroundColor: '#070d18',
-                    borderRadius: 8,
-                    border: '1px solid #1e293b'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ color: '#10b981', fontSize: 10 }}>●</span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{item.name}</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: '#94a3b8' }}>Entered {item.time}</div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ marginTop: 16, textAlign: 'right' }}>
-              <button
-                type="button"
-                onClick={() => setShowVisitsModal(false)}
-                style={{
-                  backgroundColor: '#1e293b',
-                  border: '1px solid #334155',
-                  color: '#cbd5e1',
-                  borderRadius: 8,
-                  padding: '8px 16px',
-                  fontSize: 13,
-                  cursor: 'pointer'
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 // =============================================================
 function AuthenticatedApp() {
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('staff') || sessionStorage.getItem('staff');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
-    }
-    return undefined;
-  });
+  const [user, setUser] = useState(undefined);
+  const [authError, setAuthError] = useState('');
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, firebaseUser => {
-      if (firebaseUser) {
-        setUser(firebaseUser);
-      } else if (!localStorage.getItem('staff') && !sessionStorage.getItem('staff')) {
-        setUser(null);
-      }
-    });
-    return unsubscribe;
+    // Remove legacy demo/API sessions; only Firebase restores a staff session.
+    for (const storage of [localStorage, sessionStorage]) {
+      storage.removeItem('token');
+      storage.removeItem('staff');
+    }
+    return onAuthStateChanged(auth, firebaseUser => {
+      setUser(firebaseUser ? {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        fullName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Staff'
+      } : null);
+    }, () => setAuthError('Unable to check your staff session. Please refresh and try again.'));
   }, []);
 
   const handleLogout = async () => {
     try {
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      if (token) {
-        await fetch('http://localhost:3001/api/auth/logout', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` }
-        });
-      }
       await signOut(auth);
-    } catch (e) {}
-
-    localStorage.removeItem('token');
-    localStorage.removeItem('staff');
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('staff');
-    setUser(null);
+    } catch {
+      setAuthError('Unable to sign out. Please try again.');
+    }
   };
+
+  if (authError) {
+    return <main className="session-error" role="alert"><p>{authError}</p><button onClick={() => window.location.reload()}>Retry</button></main>;
+  }
 
   if (user === undefined) {
     return <main style={{ minHeight: '100vh', background: '#070b12', color: '#fff', display: 'grid', placeItems: 'center' }}><p>Checking staff session...</p></main>;
   }
 
   if (!user) {
-    return <StaffLogin onLoginSuccess={staff => setUser(staff)} />;
+    return <StaffLogin />;
   }
 
   return <StaffDashboard staffUser={user} onLogout={handleLogout} />;

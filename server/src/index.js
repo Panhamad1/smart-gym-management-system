@@ -7,7 +7,10 @@ import { pool } from './db.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_staff_jwt_key_sprint1';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  throw new Error('Set JWT_SECRET to at least 32 characters before starting the legacy server.');
+}
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
 
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }));
@@ -15,34 +18,6 @@ app.use(express.json({ limit: '16kb' }));
 
 // Token blacklist for session invalidation on logout (Criterion 4)
 const tokenBlacklist = new Set();
-
-// Fallback seeded staff for offline resilience
-const SEEDED_STAFF = [
-  {
-    id: 'STAFF-001',
-    username: 'chao',
-    email: 'chao@smartgym.com',
-    password_hash: bcrypt.hashSync('Staff@123', 10),
-    full_name: 'Chao Vanchhoeurng',
-    role: 'Staff'
-  },
-  {
-    id: 'STAFF-002',
-    username: 'admin',
-    email: 'admin@smartgym.com',
-    password_hash: bcrypt.hashSync('Admin@123', 10),
-    full_name: 'System Administrator',
-    role: 'Administrator'
-  },
-  {
-    id: 'STAFF-003',
-    username: 'mao',
-    email: 'posovandethmao@gmail.com',
-    password_hash: bcrypt.hashSync('Mao@123', 10),
-    full_name: 'Mao Posovandeth',
-    role: 'Product Owner'
-  }
-];
 
 // -------------------------------------------------------------
 // Authentication Middleware (Criterion 3: Route & API protection)
@@ -99,24 +74,16 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const identifier = String(usernameOrEmail).trim().toLowerCase();
-    let staff = null;
-
-    // 1. Check MySQL if available
+    let rows;
     try {
-      const [rows] = await pool.execute(
+      [rows] = await pool.execute(
         'SELECT * FROM staff WHERE LOWER(username) = ? OR LOWER(email) = ? LIMIT 1',
         [identifier, identifier]
       );
-      if (rows.length > 0) staff = rows[0];
-    } catch (e) {
-      // Fallback to seeded staff memory
+    } catch {
+      return res.status(503).json({ error: 'Staff authentication is unavailable.' });
     }
-
-    if (!staff) {
-      staff = SEEDED_STAFF.find(
-        (s) => s.username.toLowerCase() === identifier || s.email.toLowerCase() === identifier
-      );
-    }
+    const staff = rows[0];
 
     // Generic error message if user not found (Criterion 1)
     if (!staff) {
@@ -242,5 +209,7 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ error: 'Unable to complete the request. Please try again.' });
 });
 
-app.listen(port, () => console.log(`Smart Gym API listening on http://localhost:${port}`));
+const server = app.listen(port, '127.0.0.1', () => {
+  console.log(`Smart Gym API listening on http://127.0.0.1:${server.address().port}`);
+});
 export default app;

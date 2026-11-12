@@ -1,5 +1,7 @@
 # SCRUM-3 — Customer registration and search
 
+> Historical Express/MySQL acceptance notes. For the current Firebase candidate, use the root README and [Sprint 1 audit](sprint-1-audit.md).
+
 ## Feature
 - Register a walk-in customer with a required name and optional phone/email.
 - Each registration creates its own MySQL auto-increment customer ID, including when names match.

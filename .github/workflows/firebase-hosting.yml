@@ -1,6 +1,8 @@
 name: Deploy Firebase Hosting
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -9,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-hosting-live
+  group: firebase-hosting-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -28,7 +30,11 @@ jobs:
       - name: Build frontend
         run: npm run build
         working-directory: client
+      - name: Test customer data handling
+        run: npm test
+        working-directory: client
       - name: Deploy live site
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_SMART_GYM_TEAM2 }}'
