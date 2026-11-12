@@ -1,6 +1,6 @@
 # Smart Gym Management System
 
-React + Vite staff app using Firebase Authentication and Cloud Firestore. This review branch combines the hosted screen layout with the Firebase customer flow preserved on `panha`. See the [Sprint 1 audit](docs/sprint-1-audit.md) for the deployed baseline and review findings.
+React + Vite staff app using Firebase Authentication and Cloud Firestore. Sprint 1 covers staff login, customer registration, search and persistence. See the [Sprint 1 audit](docs/sprint-1-audit.md) for the baseline and review findings.
 
 ## Run locally
 
@@ -14,7 +14,7 @@ npm run dev
 
 Open the local Vite URL. The frontend uses the project configured in `src/firebase.js`. That configuration points to the real Firebase project, so use the emulator test commands below for synthetic data. Staff sign in with an existing Firebase account. Firestore must authorize customer reads before the staff area opens. The customer total and directory come from Firestore. Registration displays the saved document ID.
 
-Subscription and attendance screens are labeled as demos. Customer editing, persisted visits and checkout/payment are tracked separately. The legacy Express/MySQL code under `server` and `database` is kept for reference and local regression tests. Running it requires a private `JWT_SECRET` of at least 32 characters and a separately provisioned local staff account. The hosted frontend has no Express dependency.
+Customer editing, subscriptions, visits and checkout/payment are tracked separately. The legacy Express/MySQL code under `server` and `database` is kept for reference and local regression tests. Running it requires a private `JWT_SECRET` of at least 32 characters and a separately provisioned local staff account. The hosted frontend has no Express dependency.
 
 ## Verify
 

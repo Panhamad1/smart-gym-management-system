@@ -4,8 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator, collection, addDoc, getDocsFromServer, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { customerPayload, filterCustomers, normalizeCustomer } from '../src/customer-data.js';
+import { getFirestore, connectFirestoreEmulator, collection, addDoc, doc, getDocsFromServer, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { filterCustomers, normalizeCustomer, registerCustomer } from '../src/customer-data.js';
 
 const projectId = 'demo-smart-gym';
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
@@ -46,14 +46,14 @@ test('approved staff save distinct same-name records that a fresh client can fin
   const customers = firestoreFor(t, approved);
   const name = 'Test customer ' + randomUUID();
   const form = { fullName: name, phone: '', email: '' };
-  const first = await addDoc(customers, customerPayload(form, serverTimestamp()));
-  const second = await addDoc(customers, customerPayload(form, serverTimestamp()));
-  assert.notEqual(first.id, second.id);
+  const first = await registerCustomer(customers.firestore, form);
+  const second = await registerCustomer(customers.firestore, form);
+  assert.notEqual(first, second);
   const snapshot = await getDocsFromServer(firestoreFor(t, approved));
   const records = snapshot.docs.map(doc => normalizeCustomer(doc.id, doc.data()));
-  assert.equal(filterCustomers(records, first.id)[0].fullName, name);
+  assert.equal(filterCustomers(records, first)[0].fullName, name);
   assert.equal(filterCustomers(records, name.toUpperCase()).length, 2);
-  await assert.rejects(updateDoc(first, { name: 'Edited' }), { code: 'permission-denied' });
+  await assert.rejects(updateDoc(doc(customers, first), { name: 'Edited' }), { code: 'permission-denied' });
   await assert.rejects(addDoc(customers, { name: '', createdAt: serverTimestamp() }), { code: 'permission-denied' });
 });
 
@@ -61,9 +61,22 @@ test('signed-out and unapproved clients cannot read or write customer records', 
   for (const uid of [undefined, 'unapproved']) {
     const customers = firestoreFor(t, uid);
     await assert.rejects(getDocsFromServer(customers), { code: 'permission-denied' });
-    const data = customerPayload({ fullName: 'Test customer', phone: '', email: '' }, serverTimestamp());
-    await assert.rejects(addDoc(customers, data), { code: 'permission-denied' });
+    const form = { fullName: 'Test customer', phone: '', email: '' };
+    await assert.rejects(registerCustomer(customers.firestore, form), { code: 'permission-denied' });
   }
+});
+
+test('an offline registration fails and does not write after reconnecting', { timeout: 15000 }, async t => {
+  const customers = firestoreFor(t, 'emulator-approved-staff');
+  const name = 'Offline customer ' + randomUUID();
+  Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+  try {
+    await assert.rejects(registerCustomer(customers.firestore, { fullName: name, phone: '', email: '' }), /offline/);
+  } finally {
+    delete navigator.onLine;
+  }
+  const snapshot = await getDocsFromServer(customers);
+  assert.equal(snapshot.docs.some(record => record.data().name === name), false);
 });
 
 test('manual test accounts can sign in and enforce their different access levels', async t => {

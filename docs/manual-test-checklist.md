@@ -1,6 +1,15 @@
 # Smart Gym manual test checklist
 
-Run these checks on the review branch from draft PR #7. The public site serves a different build until the changes are approved and merged.
+Use the live site to verify sign-in and read existing records. Use the local Firebase emulators for synthetic registrations, denied access and offline tests.
+
+## Check the hosted site
+
+1. Open [Smart Gym](https://smart-gym-team2.web.app) in a private window. Confirm the Staff Login form opens.
+2. Enter your approved Firebase staff email with an incorrect password. Confirm the app shows an error and stays on Staff Login.
+3. Enter the correct password. Confirm Dashboard opens and shows the registered customer count.
+4. Open Customers. Search for an existing customer by part of their name and by their full ID. Clear the search and check the total against Dashboard.
+5. Refresh, open Customers again, and verify the same saved records appear. Click Log out and confirm that refreshing stays on Staff Login.
+6. Use Add Customer on the hosted site when registering a real customer you intend to keep. For practice, use the emulator instructions below. The live rules deny customer deletion.
 
 ## Start an isolated test environment
 
@@ -36,7 +45,8 @@ Open [the local test app](http://127.0.0.1:5174). Use only synthetic names and c
 | SCRUM-32 · Optional fields | Register `Sample Alice` with blank phone and email. Copy the ID shown in the success message. | The saved ID is shown and the directory adds one row. Blank contact fields are accepted. |
 | SCRUM-32 · Unique IDs and search | Register another `Sample Alice`. Search for `aLiCe`, then search for the first ID, then a name that does not exist. | Name search shows both records with different IDs. ID search shows only the first record. The last search shows an empty result. |
 | SCRUM-32 · Persistence and count | Clear search, compare the directory total with the dashboard customer count, then refresh. | Both totals agree and the records remain. |
-| SCRUM-24 · Demo metrics | Compare the real customer count with subscription and visit cards. | The unimplemented metrics are identified as samples. |
+| SCRUM-32 · Offline save | While signed in locally, open Add Customer. Switch the browser to Offline in DevTools, then submit a valid synthetic record. Switch back online and search for that name before retrying. | The form shows an offline error and preserves the name and contact details. No row is saved on reconnect. Clicking Register again while online saves the record and shows its ID. |
+| SCRUM-32 · Sprint 1 controls | Check the Dashboard and sidebar. | Dashboard shows the actual customer count. Staff can open Customers, register a customer, or log out. |
 
 ## Automated checks
 
