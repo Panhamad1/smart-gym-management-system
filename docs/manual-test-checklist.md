@@ -61,6 +61,7 @@ Use the isolated test environment above and sign in as `staff@example.test`.
 | SCRUM-17 · Return visit and bank payment | Check the same customer in using Returning customer. Check out with Bank transfer and confirm receipt. | The new visit closes and Payments shows a separate $2.00 USD Bank transfer entry. |
 | Customer navigation | Open Customers. Use New walk-in to register and check in. From In gym, select Check out. After paid checkout, switch to All customers, search for that person, and select Check in. | Checkout opens with the active visit selected. After checkout, the row disappears from In gym. Check in opens the returning-customer form with the existing customer selected. |
 | Visit history | Complete a paid walk-in. Open Open Visits → Visit history and refresh. | The completed visit shows the customer, Cambodia-local check-in and checkout times, visit ID, and payment amount and method. |
+| Archive customer | Check out a customer. In Customers → All customers, select Archive and confirm. Refresh and look for the visit in Visit history and Payments. | The customer disappears from the directory and returning check-in search. The visit and payment remain. A customer who is still checked in has no Archive action. |
 | SCRUM-17 · Concurrent checkout | Use two signed-in browser sessions. Open checkout for the same active visit in both. Confirm in one, then submit the stale form in the other. | The second cashier sees that the visit is no longer open. Payments contains a single entry for that visit. |
 
 ## Automated checks

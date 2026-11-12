@@ -24,6 +24,7 @@ service cloud.firestore {
         && data.customerId == customerId
         && data.customerName is string
         && data.customerName.size() > 0
+        && !('archivedAt' in customer)
         && data.customerName == (customer.get('name', '') != ''
           ? customer.name : customer.get('fullName', ''))
         && data.visitId is string && data.visitId.matches('^[A-Za-z0-9]{20}$')
@@ -66,6 +67,14 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    function validArchive(customerId) {
+      return !('archivedAt' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['archivedAt', 'archivedBy'])
+        && request.resource.data.archivedAt == request.time
+        && request.resource.data.archivedBy == request.auth.uid
+        && !existsAfter(openVisitPath(customerId));
+    }
+
     match /customers/{customerId} {
       allow read: if isApprovedStaff();
       allow create: if isApprovedStaff()
@@ -79,7 +88,8 @@ service cloud.firestore {
         && (!('email' in request.resource.data)
             || (request.resource.data.email is string && request.resource.data.email.size() <= 254))
         && request.resource.data.createdAt == request.time;
-      allow update, delete: if false;
+      allow update: if isApprovedStaff() && validArchive(customerId);
+      allow delete: if false;
     }
   }
 }

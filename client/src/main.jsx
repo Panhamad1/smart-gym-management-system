@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
 import { normalizeCustomer } from './customer-data';
-import { checkInWalkIn, checkOutWalkIn } from './walk-in-data';
+import { archiveCustomer, checkInWalkIn, checkOutWalkIn } from './walk-in-data';
 import { CustomerDirectory } from './customer-directory';
 import { WalkInCheckIn } from './walk-in-check-in';
 import { OpenWalkIns, WalkInPayments, useWalkInRecords, visitTime } from './walk-in-visits';
@@ -454,8 +454,10 @@ function StaffDashboard({ staffUser, onLogout }) {
       if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
       clearTimeout(loadingTimeout);
       setCustomersError('');
-      setCustomers(snapshot.docs.map(doc => normalizeCustomer(doc.id, doc.data())));
-      setCustomerTotal(snapshot.size);
+      const availableCustomers = snapshot.docs.map(doc => normalizeCustomer(doc.id, doc.data()))
+        .filter(customer => !customer.archivedAt);
+      setCustomers(availableCustomers);
+      setCustomerTotal(availableCustomers.length);
       setCustomersLoading(false);
     }, error => {
       clearTimeout(loadingTimeout);
@@ -878,6 +880,7 @@ function StaffDashboard({ staffUser, onLogout }) {
             <CustomerDirectory customers={customers} openVisits={openVisits}
               onNewWalkIn={() => setActiveTab('check-in')}
               onCheckIn={customer => setActiveTab('check-in', { customer })}
+              onArchive={customerId => archiveCustomer(db, staffUser.uid, customerId)}
               onCheckout={visit => setActiveTab('open-visits', { visit })} />
           )}
         </main>
