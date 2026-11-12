@@ -28,6 +28,93 @@
   background: #1e293b;
 }
 
+.planned-feature {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.planned-badge {
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 2px 5px;
+  font-size: 10px;
+}
+
+.planned-feature-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.planned-feature-name svg {
+  flex-shrink: 0;
+}
+
+.planned-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid #1a273f;
+  border-radius: 14px;
+  background: #0d1627;
+}
+
+.planned-metric-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.planned-metric-label,
+.planned-metric p {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.planned-metric-value {
+  color: #cbd5e1;
+  font-size: 26px;
+}
+
+.planned-metric h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.planned-metric p {
+  margin: 0;
+}
+
+.dashboard-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  gap: 20px;
+}
+
+.attendance-preview-columns {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 12px;
+  padding-block: 10px;
+  border-bottom: 1px solid #1a273f;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+@media (max-width: 1000px) {
+  .dashboard-panels {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 720px) {
   .staff-workspace {
     padding: 16px;
