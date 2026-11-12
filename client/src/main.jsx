@@ -5,7 +5,7 @@ import { normalizeCustomer } from './customer-data';
 import { archiveCustomer, checkInWalkIn, checkOutWalkIn } from './walk-in-data';
 import { CustomerDirectory } from './customer-directory';
 import { WalkInCheckIn } from './walk-in-check-in';
-import { OpenWalkIns, WalkInPayments, useWalkInRecords, visitTime } from './walk-in-visits';
+import { OpenWalkIns, WalkInPayments, useTodayCheckIns, useWalkInRecords, visitTime } from './walk-in-visits';
 import { auth, db } from './firebase';
 import {
   signInWithEmailAndPassword,
@@ -442,6 +442,7 @@ function StaffDashboard({ staffUser, onLogout }) {
   const [customersError, setCustomersError] = useState('');
   const [customerRefresh, setCustomerRefresh] = useState(0);
   const openVisits = useWalkInRecords(db, customerTotal !== null, 'openWalkIns');
+  const todayCheckIns = useTodayCheckIns(db, customerTotal !== null && activeTab === 'dashboard', openVisits);
   useEffect(() => {
     setCustomersLoading(true);
     setCustomersError('');
@@ -789,7 +790,8 @@ function StaffDashboard({ staffUser, onLogout }) {
                 </div>
 
                 <PlannedMetric label="Active Subscriptions" icon={IconPlans} accent="#3b82f6" tint="rgba(59, 130, 246, 0.12)" />
-                <PlannedMetric label="Today's Check-ins" icon={IconCheckin} accent="#a855f7" tint="rgba(168, 85, 247, 0.12)" />
+                <PlannedMetric label="Today's Check-ins (Cambodia)" icon={IconCheckin} accent="#a855f7" tint="rgba(168, 85, 247, 0.12)"
+                  value={todayCheckIns.count} status={todayCheckIns.status} />
                 <PlannedMetric label="Open Visits" icon={IconOpenVisits} accent="#f59e0b" tint="rgba(245, 158, 11, 0.12)"
                   value={openVisits.records?.length} status={openVisits.error ? 'Unavailable' : 'Loading…'} />
               </div>

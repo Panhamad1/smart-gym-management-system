@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { walkInError, walkInFee, walkInMethods } from './walk-in-data';
+import { cambodiaDate, cambodiaMidnight, dayAfter } from './cambodia-day';
 
 const dateFormat = new Intl.DateTimeFormat('en-GB', {
   dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Phnom_Penh'
@@ -14,16 +15,22 @@ function paymentAmount({ amountMinor, currency }) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amountMinor / 100);
 }
 
-export function useWalkInRecords(db, enabled, collectionName, maxRecords = 50) {
+export function useWalkInRecords(db, enabled, collectionName, {
+  maxRecords = collectionName === 'walkInReceipts' ? 50 : null,
+  timeField = collectionName === 'walkInReceipts' ? 'checkedOutAt' : 'checkedInAt',
+  start = null, end = null
+} = {}) {
   const [result, setResult] = useState({ records: null, error: '' });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     setResult({ records: null, error: '' });
     if (!enabled) return;
     const source = collection(db, collectionName);
-    const recordsQuery = collectionName === 'walkInReceipts'
-      ? query(source, orderBy('checkedOutAt', 'desc'), limit(maxRecords))
-      : query(source, orderBy('checkedInAt', 'desc'));
+    const constraints = [orderBy(timeField, 'desc')];
+    if (start !== null) constraints.push(where(timeField, '>=', new Date(start)));
+    if (end !== null) constraints.push(where(timeField, '<', new Date(end)));
+    if (maxRecords !== null) constraints.push(limit(maxRecords));
+    const recordsQuery = query(source, ...constraints);
     const timeout = setTimeout(() => {
       setResult({ records: null, error: 'Unable to load walk-in records. Check your connection and retry.' });
     }, 10000);
@@ -36,8 +43,36 @@ export function useWalkInRecords(db, enabled, collectionName, maxRecords = 50) {
       setResult({ records: null, error: walkInError(error) });
     });
     return () => { clearTimeout(timeout); unsubscribe(); };
-  }, [db, enabled, collectionName, maxRecords, attempt]);
+  }, [db, enabled, collectionName, maxRecords, timeField, start, end, attempt]);
   return { ...result, retry: () => setAttempt(value => value + 1) };
+}
+
+export function useTodayCheckIns(db, enabled, openVisits) {
+  const [day, setDay] = useState(cambodiaDate);
+  useEffect(() => {
+    const update = () => setDay(cambodiaDate());
+    const timer = setTimeout(update, Math.max(0, dayAfter(day) - Date.now()));
+    document.addEventListener('visibilitychange', update);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', update);
+    };
+  }, [day]);
+  const start = cambodiaMidnight(day);
+  const end = dayAfter(day);
+  const completed = useWalkInRecords(db, enabled, 'walkInReceipts', {
+    maxRecords: null, timeField: 'checkedInAt', start, end
+  });
+  const unavailable = openVisits.error || completed.error;
+  if (!openVisits.records || !completed.records) {
+    return { count: null, status: unavailable ? 'Unavailable' : 'Loading…' };
+  }
+  const ids = new Set(completed.records.map(visit => visit.visitId));
+  for (const visit of openVisits.records) {
+    const time = visit.checkedInAt.toMillis();
+    if (time >= start && time < end) ids.add(visit.visitId);
+  }
+  return { count: ids.size, status: '' };
 }
 
 function RecordList({ result, empty, children }) {
@@ -134,20 +169,61 @@ export function OpenWalkIns({ db, result, initialVisit, onCheckout }) {
   );
 }
 
-function VisitHistory({ db }) {
+function ReceiptList({ db, attendance, children }) {
   const [pageSize, setPageSize] = useState(50);
-  const result = useWalkInRecords(db, true, 'walkInReceipts', pageSize + 1);
-  const hasMore = result.records?.length > pageSize;
-  const visible = { ...result, records: result.records?.slice(0, pageSize) };
+  const [from, setFrom] = useState('');
+  const [through, setThrough] = useState('');
+  const [customer, setCustomer] = useState('');
+  const [method, setMethod] = useState('');
+  const invalid = from && through && from > through;
+  const name = customer.trim().toLowerCase();
+  const result = useWalkInRecords(db, !invalid, 'walkInReceipts', {
+    maxRecords: name || method ? null : pageSize + 1,
+    timeField: attendance ? 'checkedInAt' : 'checkedOutAt',
+    start: from ? cambodiaMidnight(from) : null,
+    end: through ? dayAfter(through) : null
+  });
+  const records = result.records?.filter(receipt => (
+    (!name || receipt.customerName.toLowerCase().includes(name) || receipt.customerId.toLowerCase() === name)
+    && (!method || receipt.method === method)
+  ));
+  const visible = { ...result, records: records?.slice(0, pageSize) };
 
   return (
     <>
-      <p>Completed walk-ins. Times are shown in Cambodia local time.</p>
-      <RecordList result={visible} empty="No completed walk-in visits.">
+      <p>{attendance ? 'Filter completed walk-ins by check-in date.' : 'Filter walk-in payments by payment date.'} Dates use Cambodia time.</p>
+      <div className="walk-in-mode">
+        <label>Customer name or ID<input type="search" value={customer} onChange={event => setCustomer(event.target.value)} /></label>
+        <label>From<input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label>
+        <label>Through<input type="date" value={through} onChange={event => setThrough(event.target.value)} /></label>
+        {!attendance && (
+          <label>Payment method
+            <select value={method} onChange={event => setMethod(event.target.value)}>
+              <option value="">All methods</option>
+              {Object.entries(walkInMethods).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+      {invalid ? <p className="walk-in-error" role="alert">The start date must be on or before the end date.</p>
+        : <RecordList result={visible} empty={attendance ? 'No completed walk-ins match these filters.' : 'No walk-in payments match these filters.'}>
+          {children}
+        </RecordList>}
+      {!invalid && records?.length > pageSize && (
+        <button type="button" onClick={() => setPageSize(size => size + 50)}>Show more results</button>
+      )}
+    </>
+  );
+}
+
+function VisitHistory({ db }) {
+  return (
+      <ReceiptList db={db} attendance>
         {receipt => (
           <li key={receipt.visitId}>
             <div>
               <strong>{receipt.customerName}</strong>
+              <small>Walk-in</small>
               <small>Checked in {visitTime(receipt.checkedInAt)}</small>
               <small>Checked out {visitTime(receipt.checkedOutAt)}</small>
               <small>Visit ID {receipt.visitId}</small>
@@ -158,26 +234,26 @@ function VisitHistory({ db }) {
             </div>
           </li>
         )}
-      </RecordList>
-      {hasMore && <button type="button" onClick={() => setPageSize(size => size + 50)}>Show older visits</button>}
-    </>
+      </ReceiptList>
   );
 }
 
 export function WalkInPayments({ db }) {
-  const result = useWalkInRecords(db, true, 'walkInReceipts');
   return (
     <section className="walk-in-panel" aria-labelledby="walk-in-payments-title">
       <h1 id="walk-in-payments-title">Payments</h1>
-      <p>Most recent 50 walk-in payments.</p>
-      <RecordList result={result} empty="No walk-in payments recorded.">
+      <ReceiptList db={db}>
         {receipt => (
           <li key={receipt.visitId}>
-            <div><strong>{receipt.customerName}</strong><small>{visitTime(receipt.checkedOutAt)} · {walkInMethods[receipt.method]}</small></div>
+            <div>
+              <strong>{receipt.customerName}</strong>
+              <small>{visitTime(receipt.checkedOutAt)} · {walkInMethods[receipt.method]} · Walk-in</small>
+              <small>Visit ID {receipt.visitId}</small>
+            </div>
             <strong>{paymentAmount(receipt)} USD</strong>
           </li>
         )}
-      </RecordList>
+      </ReceiptList>
     </section>
   );
 }
