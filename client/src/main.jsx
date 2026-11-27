@@ -931,7 +931,7 @@ function StaffDashboard({ staffUser, onLogout }) {
                onUpdate={(customerId, form) => updateCustomer(db, customerId, form)}
                onViewHistory={selectedId => setActiveTab('attendance', { customerId: selectedId })}
                onViewPayments={selectedId => setActiveTab('payments', { customerId: selectedId })}
-              onCheckout={visit => setActiveTab('open-visits', { visit })} />
+              onCheckout={selectedVisit => setActiveTab('open-visits', { visit: selectedVisit.subscriptionId ? null : selectedVisit })} />
           )}
         </main>
       </div>
