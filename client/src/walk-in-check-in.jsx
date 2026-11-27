@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { filterCustomers, customerReference, phoneHint } from './customer-data';
 import { walkInError } from './walk-in-data';
+import { membershipStatus } from './subscription-data';
 
 const emptyCustomer = { fullName: '', phone: '', email: '' };
 
-export function WalkInCheckIn({ customers, initialCustomer, onCheckIn, onViewOpenVisits }) {
+export function WalkInCheckIn({ customers, initialCustomer, memberships = [], onCheckIn, onViewOpenVisits }) {
   const [mode, setMode] = useState(initialCustomer ? 'existing' : 'new');
   const [search, setSearch] = useState(initialCustomer?.fullName ?? '');
   const [selectedCustomer, setSelectedCustomer] = useState(initialCustomer ?? null);
   const [identityConfirmed, setIdentityConfirmed] = useState(false);
+  const [visitType, setVisitType] = useState('walk-in');
   const [form, setForm] = useState(emptyCustomer);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -18,6 +20,7 @@ export function WalkInCheckIn({ customers, initialCustomer, onCheckIn, onViewOpe
     setMode(nextMode);
     setSelectedCustomer(null);
     setIdentityConfirmed(false);
+    setVisitType('walk-in');
     setError('');
     setSuccess('');
   }
@@ -38,12 +41,14 @@ export function WalkInCheckIn({ customers, initialCustomer, onCheckIn, onViewOpe
     setSuccess('');
     try {
       const customerName = mode === 'new' ? form.fullName.trim() : selectedCustomer.fullName;
-      const result = await onCheckIn(mode === 'new' ? { form } : { customerId: selectedCustomer.id });
+      const input = mode === 'new' ? { form } : { customerId: selectedCustomer.id, type: visitType };
+      const result = await onCheckIn(input);
       const reference = customerReference(result?.customerId || selectedCustomer?.id, customers);
       setSuccess(customerName + ' checked in. Customer reference: ' + reference + '.');
       setForm(emptyCustomer);
       setSelectedCustomer(null);
       setIdentityConfirmed(false);
+      setVisitType('walk-in');
       setSearch('');
     } catch (failure) {
       setError(walkInError(failure));
@@ -53,6 +58,8 @@ export function WalkInCheckIn({ customers, initialCustomer, onCheckIn, onViewOpe
   }
 
   const matches = filterCustomers(customers, search);
+  const member = memberships.find(item => item.customerId === selectedCustomer?.id);
+  const status = membershipStatus(member);
 
   return (
     <section className="walk-in-panel" aria-labelledby="walk-in-check-in-title">
@@ -70,18 +77,26 @@ export function WalkInCheckIn({ customers, initialCustomer, onCheckIn, onViewOpe
                 setSearch(event.target.value);
                 setSelectedCustomer(null);
                 setIdentityConfirmed(false);
+                setVisitType('walk-in');
               }} />
               {selectedCustomer ? (
                 <div className="walk-in-identity-confirmation">
                   <p>Selected: <strong>{selectedCustomer.fullName}</strong></p>
                   <p>Customer reference: <strong>{customerReference(selectedCustomer.id, customers)}</strong></p>
                   <p>{phoneHint(selectedCustomer.phone)}</p>
+                  <p>Membership status: <strong>{status}</strong></p>
+                  <label htmlFor="visit-type">Visit type</label>
+                  <select id="visit-type" value={visitType} onChange={event => setVisitType(event.target.value)}>
+                    <option value="walk-in">Paid walk-in ($2 at checkout)</option>
+                    <option value="subscription" disabled={status !== 'active'}>Subscription-covered (no visit fee)</option>
+                  </select>
+                  {status !== 'active' && <p>Expired or missing membership cannot cover a visit. Choose walk-in or renew the membership.</p>}
                   <label>
                     <input type="checkbox" checked={identityConfirmed}
                       onChange={event => setIdentityConfirmed(event.target.checked)} />
                     I confirmed this is the correct customer using their contact details or customer reference.
                   </label>
-                  <button type="button" onClick={() => { setSelectedCustomer(null); setIdentityConfirmed(false); }}>
+                  <button type="button" onClick={() => { setSelectedCustomer(null); setIdentityConfirmed(false); setVisitType('walk-in'); }}>
                     Choose another customer
                   </button>
                   {!selectedCustomer.phone && <p>Without a phone on file, ask for their reference or other reliable details. If unsure, do not reuse someone else's record.</p>}
@@ -93,7 +108,7 @@ export function WalkInCheckIn({ customers, initialCustomer, onCheckIn, onViewOpe
                     {matches.length === 0 && <li>No matching customers.</li>}
                     {matches.map(customer => (
                       <li key={customer.id}>
-                        <button type="button" onClick={() => { setSelectedCustomer(customer); setIdentityConfirmed(false); }}>
+                        <button type="button" onClick={() => { setSelectedCustomer(customer); setIdentityConfirmed(false); setVisitType('walk-in'); }}>
                           <strong>{customer.fullName}</strong>
                           <small>{customerReference(customer.id, customers)} · {phoneHint(customer.phone)}</small>
                         </button>
