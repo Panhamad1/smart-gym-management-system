@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeCustomer, filterCustomers, customerPayload, customerReference, phoneHint } from '../src/customer-data.js';
+import { normalizeCustomer, filterCustomers, customerPayload, customerReference, phoneHint, customerUpdateFields } from '../src/customer-data.js';
 
 test('optional blank contact fields are omitted to satisfy the published Firestore rules', () => {
   const timestamp = {};
@@ -60,4 +60,17 @@ test('phone lookups ignore common Cambodia dialing punctuation', () => {
   assert.equal(filterCustomers(customers, '012345').length, 0);
   assert.equal(filterCustomers(customers, '85512345678').length, 1);
   assert.equal(filterCustomers(customers, '5678').length, 1);
+});
+
+test('customer profile edits update only name and optional contact fields', () => {
+  const changes = customerUpdateFields({ fullName: '  Dara  ', phone: ' 012345678 ', email: '  dara@example.com ' });
+  assert.deepEqual(changes, { name: 'Dara', phone: '012345678', email: 'dara@example.com' });
+  assert.deepEqual(customerUpdateFields({ fullName: 'Dara', phone: '', email: '' }), {
+    name: 'Dara', phone: '', email: ''
+  });
+  assert.equal('createdAt' in changes, false);
+  assert.equal('id' in changes, false);
+  assert.throws(() => customerUpdateFields({ fullName: '   ', phone: '', email: '' }), /name/i);
+  assert.throws(() => customerUpdateFields({ fullName: 'Dara', phone: '1'.repeat(31), email: '' }), /Phone/i);
+  assert.throws(() => customerUpdateFields({ fullName: 'Dara', phone: '', email: 'invalid' }), /email/i);
 });
