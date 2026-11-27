@@ -33,7 +33,7 @@ export function addCalendarMonths(day, months) {
 }
 
 export function validatePlan(plan) {
-  if (!plan || typeof plan !== 'object' || typeof plan.id !== 'string' || !/^[a-z0-9-]{1,40}$/.test(plan.id)) {
+  if (!plan || typeof plan !== 'object' || typeof plan.id !== 'string' || !/^[A-Za-z0-9-]{1,40}$/.test(plan.id)) {
     throw new Error('Plan needs a valid identifier.');
   }
   if (typeof plan.label !== 'string' || !plan.label.trim() || plan.label.length > 80) {
