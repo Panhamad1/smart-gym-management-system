@@ -68,6 +68,7 @@ test('approved staff save distinct same-name records that a fresh client can fin
   await assert.rejects(updateDoc(doc(customers, first), { createdAt: serverTimestamp() }), { code: 'permission-denied' });
   await assert.rejects(updateDoc(doc(customers, first), { role: 'administrator' }), { code: 'permission-denied' });
   await assert.rejects(updateDoc(doc(customers, first), { name: '' }), { code: 'permission-denied' });
+  await assert.rejects(updateDoc(doc(customers, first), { email: 'not-an-email' }), { code: 'permission-denied' });
   await assert.rejects(updateDoc(doc(customers, first), { phone: 'x'.repeat(31) }), { code: 'permission-denied' });
   await assert.rejects(addDoc(customers, { name: '', createdAt: serverTimestamp() }), { code: 'permission-denied' });
 });
