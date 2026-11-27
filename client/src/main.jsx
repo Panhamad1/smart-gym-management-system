@@ -7,6 +7,11 @@ import { CustomerDirectory } from './customer-directory';
 import { WalkInCheckIn } from './walk-in-check-in';
 import { OpenWalkIns, WalkInPayments, useTodayCheckIns, useWalkInRecords, visitTime } from './walk-in-visits';
 import { auth, db } from './firebase';
+import { useGymCollection } from './gym-records';
+import { MembershipPanel } from './membership-panel';
+import { MemberOpenVisits, GymPayments, GymAttendance, dashboardReport } from './membership-reporting';
+import { checkInMember } from './member-visits-data';
+import { cambodiaDate } from './cambodia-day';
 import {
   signInWithEmailAndPassword,
   setPersistence,
@@ -433,7 +438,7 @@ function PlannedMetric({ label, icon: Icon, accent, tint, value, status = 'Plann
 }
 
 function StaffDashboard({ staffUser, onLogout }) {
-  const [{ tab: activeTab, customer, visit }, setScreen] = useState({ tab: 'dashboard' });
+  const [{ tab: activeTab, customer, visit, customerId }, setScreen] = useState({ tab: 'dashboard' });
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const [customers, setCustomers] = useState([]);
@@ -443,6 +448,26 @@ function StaffDashboard({ staffUser, onLogout }) {
   const [customerRefresh, setCustomerRefresh] = useState(0);
   const openVisits = useWalkInRecords(db, customerTotal !== null, 'openWalkIns');
   const todayCheckIns = useTodayCheckIns(db, customerTotal !== null && activeTab === 'dashboard', openVisits);
+  const plans = useGymCollection(db, 'membershipPlans', customerTotal !== null);
+  const memberships = useGymCollection(db, 'customerMemberships', customerTotal !== null);
+  const subscriptions = useGymCollection(db, 'subscriptions', customerTotal !== null);
+  const subscriptionPayments = useGymCollection(db, 'subscriptionPayments', customerTotal !== null);
+  const openMemberVisits = useGymCollection(db, 'openMemberVisits', customerTotal !== null);
+  const completedMemberVisits = useGymCollection(db, 'memberVisitHistory', customerTotal !== null);
+  const walkInReceipts = useGymCollection(db, 'walkInReceipts', customerTotal !== null);
+  const [today, setToday] = useState(() => cambodiaDate());
+  useEffect(() => {
+    const refresh = () => setToday(cambodiaDate());
+    const timer = setInterval(refresh, 60000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
+  }, []);
+  const gymDashboard = dashboardReport({
+    memberships: memberships.records, memberOpen: openMemberVisits.records,
+    memberHistory: completedMemberVisits.records, today, walkInToday: todayCheckIns.count,
+    walkInOpen: openVisits.records?.length
+  });
+  const reportError = memberships.error || openMemberVisits.error || completedMemberVisits.error;
   useEffect(() => {
     setCustomersLoading(true);
     setCustomersError('');
@@ -476,7 +501,8 @@ function StaffDashboard({ staffUser, onLogout }) {
   }
   const pageTitle = {
     dashboard: '2. Dashboard', customers: '3. Customer Management',
-    'check-in': 'Check-in', 'open-visits': 'Open Visits', payments: 'Payments'
+    'check-in': 'Check-in', 'open-visits': 'Open Visits', payments: 'Payments',
+    memberships: 'Plans & Subscriptions', attendance: 'Attendance History'
   }[activeTab];
   const visitNavigation = { activeTab, onNavigate: setActiveTab };
 
@@ -602,10 +628,11 @@ function StaffDashboard({ staffUser, onLogout }) {
                 <span>Customers</span>
               </button>
 
-              <PlannedFeature icon={IconPlans}>Plans &amp; Subscriptions</PlannedFeature>
+              <VisitLink icon={IconPlans} tab="memberships" {...visitNavigation}>Plans &amp; Subscriptions</VisitLink>
               <VisitLink icon={IconCheckin} tab="check-in" {...visitNavigation}>Check-in</VisitLink>
               <VisitLink icon={IconOpenVisits} tab="open-visits" {...visitNavigation}>Open Visits</VisitLink>
               <VisitLink icon={IconPayments} tab="payments" {...visitNavigation}>Payments</VisitLink>
+              <VisitLink icon={IconCalendar} tab="attendance" {...visitNavigation}>Attendance History</VisitLink>
             </nav>
           </div>
 
@@ -789,11 +816,14 @@ function StaffDashboard({ staffUser, onLogout }) {
                   </div>
                 </div>
 
-                <PlannedMetric label="Active Subscriptions" icon={IconPlans} accent="#3b82f6" tint="rgba(59, 130, 246, 0.12)" />
+                <PlannedMetric label="Active Subscriptions" icon={IconPlans} accent="#3b82f6" tint="rgba(59, 130, 246, 0.12)"
+                  value={gymDashboard.active} status={reportError ? 'Unavailable' : 'Loading…'} />
+                <PlannedMetric label="Expired Subscriptions" icon={IconPlans} accent="#fb7185" tint="rgba(251, 113, 133, 0.12)"
+                  value={gymDashboard.expired} status={reportError ? 'Unavailable' : 'Loading…'} />
                 <PlannedMetric label="Today's Check-ins (Cambodia)" icon={IconCheckin} accent="#a855f7" tint="rgba(168, 85, 247, 0.12)"
-                  value={todayCheckIns.count} status={todayCheckIns.status} />
+                  value={gymDashboard.todayCheckIns} status={reportError ? 'Unavailable' : todayCheckIns.status} />
                 <PlannedMetric label="Open Visits" icon={IconOpenVisits} accent="#f59e0b" tint="rgba(245, 158, 11, 0.12)"
-                  value={openVisits.records?.length} status={openVisits.error ? 'Unavailable' : 'Loading…'} />
+                  value={gymDashboard.openVisits} status={reportError || openVisits.error ? 'Unavailable' : 'Loading…'} />
               </div>
 
               {/* Customer actions and attendance preview */}
@@ -871,21 +901,35 @@ function StaffDashboard({ staffUser, onLogout }) {
           {/* TAB 2: CUSTOMERS MANAGEMENT VIEW (Figma Screen 3)         */}
           {/* ========================================================= */}
           {activeTab === 'check-in' && (
-            <WalkInCheckIn customers={customers} initialCustomer={customer} onCheckIn={input => checkInWalkIn(db, staffUser.uid, input)}
+            <WalkInCheckIn customers={customers} initialCustomer={customer} memberships={memberships.records || []}
+              onCheckIn={input => input.type === 'subscription'
+                ? checkInMember(db, staffUser.uid, input.customerId) : checkInWalkIn(db, staffUser.uid, input)}
               onViewOpenVisits={() => setActiveTab('open-visits')} />
           )}
           {activeTab === 'open-visits' && (
-            <OpenWalkIns db={db} result={openVisits} initialVisit={visit} customers={customers} initialCustomerId={customerId}
-              onCheckout={input => checkOutWalkIn(db, staffUser.uid, input)} />
+            <>
+              <OpenWalkIns db={db} result={openVisits} initialVisit={visit} customers={customers} initialCustomerId={customerId}
+                onCheckout={input => checkOutWalkIn(db, staffUser.uid, input)} />
+              <MemberOpenVisits db={db} staffId={staffUser.uid} customers={customers} result={openMemberVisits} />
+            </>
           )}
-          {activeTab === 'payments' && <WalkInPayments db={db} initialCustomerId={customerId} />}
+          {activeTab === 'payments' && (
+            <GymPayments customers={customers} walks={walkInReceipts} payments={subscriptionPayments} initialCustomerId={customerId} />
+          )}
+          {activeTab === 'attendance' && (
+            <GymAttendance customers={customers} walks={walkInReceipts} members={completedMemberVisits} initialCustomerId={customerId} />
+          )}
+          {activeTab === 'memberships' && (
+            <MembershipPanel db={db} staffId={staffUser.uid} customers={customers}
+              plans={plans} states={memberships} subscriptions={subscriptions} />
+          )}
           {activeTab === 'customers' && (
-            <CustomerDirectory customers={customers} openVisits={openVisits}
+            <CustomerDirectory customers={customers} openVisits={openVisits} memberOpen={openMemberVisits}
               onNewWalkIn={() => setActiveTab('check-in')}
               onCheckIn={customer => setActiveTab('check-in', { customer })}
               onArchive={customerId => archiveCustomer(db, staffUser.uid, customerId)}
                onUpdate={(customerId, form) => updateCustomer(db, customerId, form)}
-               onViewHistory={selectedId => setActiveTab('open-visits', { customerId: selectedId })}
+               onViewHistory={selectedId => setActiveTab('attendance', { customerId: selectedId })}
                onViewPayments={selectedId => setActiveTab('payments', { customerId: selectedId })}
               onCheckout={visit => setActiveTab('open-visits', { visit })} />
           )}
