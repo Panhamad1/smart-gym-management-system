@@ -875,7 +875,8 @@ function StaffDashboard({ staffUser, onLogout }) {
               onViewOpenVisits={() => setActiveTab('open-visits')} />
           )}
           {activeTab === 'open-visits' && (
-            <OpenWalkIns db={db} result={openVisits} initialVisit={visit} onCheckout={input => checkOutWalkIn(db, staffUser.uid, input)} />
+            <OpenWalkIns db={db} result={openVisits} initialVisit={visit} customers={customers}
+              onCheckout={input => checkOutWalkIn(db, staffUser.uid, input)} />
           )}
           {activeTab === 'payments' && <WalkInPayments db={db} />}
           {activeTab === 'customers' && (
