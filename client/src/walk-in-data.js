@@ -15,12 +15,13 @@ export async function checkInWalkIn(db, staffId, { customerId, form }) {
   }
   const customerRef = form ? doc(collection(db, 'customers')) : doc(db, 'customers', customerId);
   const openRef = doc(db, 'openWalkIns', customerRef.id);
+  const memberOpenRef = doc(db, 'openMemberVisits', customerRef.id);
   const visitId = doc(collection(db, 'walkInReceipts')).id;
   const newCustomer = form ? customerPayload(form, serverTimestamp()) : null;
 
   const writeVisit = runTransaction(db, async transaction => {
-    const open = await transaction.get(openRef);
-    if (open.exists()) throw new Error('This customer is already checked in.');
+    const [open, memberOpen] = await Promise.all([transaction.get(openRef), transaction.get(memberOpenRef)]);
+    if (open.exists() || memberOpen.exists()) throw new Error('This customer is already checked in.');
 
     let customerName = newCustomer?.name;
     if (!newCustomer) {
@@ -56,12 +57,13 @@ export async function checkInWalkIn(db, staffId, { customerId, form }) {
 export async function archiveCustomer(db, staffId, customerId) {
   const customerRef = doc(db, 'customers', customerId);
   const openRef = doc(db, 'openWalkIns', customerId);
+  const memberOpenRef = doc(db, 'openMemberVisits', customerId);
   await runTransaction(db, async transaction => {
     const customer = await transaction.get(customerRef);
     if (!customer.exists()) throw new Error('Customer record not found.');
     if (customer.data().archivedAt) return;
-    const visit = await transaction.get(openRef);
-    if (visit.exists()) throw new Error('Check out this customer before archiving.');
+    const [visit, memberVisit] = await Promise.all([transaction.get(openRef), transaction.get(memberOpenRef)]);
+    if (visit.exists() || memberVisit.exists()) throw new Error('Check out this customer before archiving.');
     transaction.update(customerRef, { archivedAt: serverTimestamp(), archivedBy: staffId });
   });
 }
