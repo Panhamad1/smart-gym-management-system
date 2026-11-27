@@ -4,7 +4,7 @@ import { visitTime } from './walk-in-visits';
 import { walkInError } from './walk-in-data';
 import { CustomerEditor } from './customer-editor';
 
-export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckIn, onCheckout, onArchive, onUpdate }) {
+export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckIn, onCheckout, onArchive, onUpdate, onViewHistory, onViewPayments }) {
   const [scope, setScope] = useState('active');
   const [search, setSearch] = useState('');
   const [archiveTarget, setArchiveTarget] = useState(null);
@@ -42,8 +42,9 @@ export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckI
       </div>
       {archiveSuccess && <p className="walk-in-success" role="status">{archiveSuccess}</p>}
       {editingTarget && (
-        <CustomerEditor key={editingTarget.id} customer={editingTarget} customers={customers}
-          onSave={onUpdate} onCancel={() => setEditingTarget(null)} />
+        <CustomerEditor key={editingTarget.id} customer={customers.find(current => current.id === editingTarget.id) || editingTarget}
+          customers={customers} onSave={onUpdate} onCancel={() => setEditingTarget(null)}
+          onViewHistory={onViewHistory} onViewPayments={onViewPayments} />
       )}
       {archiveTarget && (
         <section className="walk-in-form" aria-labelledby="archive-customer-title">
