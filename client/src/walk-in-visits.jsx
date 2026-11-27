@@ -88,8 +88,8 @@ function RecordList({ result, empty, children }) {
   return <ul className="walk-in-records">{result.records.map(children)}</ul>;
 }
 
-export function OpenWalkIns({ db, result, initialVisit, onCheckout, customers = [] }) {
-  const [showHistory, setShowHistory] = useState(false);
+export function OpenWalkIns({ db, result, initialVisit, onCheckout, customers = [], initialCustomerId = null }) {
+  const [showHistory, setShowHistory] = useState(Boolean(initialCustomerId));
   const [selected, setSelected] = useState(initialVisit ?? null);
   const [method, setMethod] = useState('');
   const [paymentReceived, setPaymentReceived] = useState(false);
@@ -138,7 +138,7 @@ export function OpenWalkIns({ db, result, initialVisit, onCheckout, customers = 
         <button type="button" aria-pressed={!showHistory} disabled={saving} onClick={() => setShowHistory(false)}>In gym</button>
         <button type="button" aria-pressed={showHistory} disabled={saving} onClick={() => setShowHistory(true)}>Visit history</button>
       </div>
-      {showHistory ? <VisitHistory db={db} /> : (
+      {showHistory ? <VisitHistory db={db} initialCustomerId={initialCustomerId} /> : (
         <>
           <p>Walk-in customers currently in the gym.</p>
           {success && <p className="walk-in-success" role="status">{success}</p>}
@@ -189,11 +189,11 @@ export function OpenWalkIns({ db, result, initialVisit, onCheckout, customers = 
   );
 }
 
-function ReceiptList({ db, attendance, children }) {
+function ReceiptList({ db, attendance, children, initialCustomerId = null }) {
   const [pageSize, setPageSize] = useState(50);
   const [from, setFrom] = useState('');
   const [through, setThrough] = useState('');
-  const [customer, setCustomer] = useState('');
+  const [customer, setCustomer] = useState(initialCustomerId || '');
   const [method, setMethod] = useState('');
   const invalid = from && through && from > through;
   const name = customer.trim().toLowerCase();
@@ -236,9 +236,9 @@ function ReceiptList({ db, attendance, children }) {
   );
 }
 
-function VisitHistory({ db }) {
+function VisitHistory({ db, initialCustomerId = null }) {
   return (
-      <ReceiptList db={db} attendance>
+      <ReceiptList db={db} attendance initialCustomerId={initialCustomerId}>
         {receipt => (
           <li key={receipt.visitId}>
             <div>
@@ -258,11 +258,11 @@ function VisitHistory({ db }) {
   );
 }
 
-export function WalkInPayments({ db }) {
+export function WalkInPayments({ db, initialCustomerId = null }) {
   return (
     <section className="walk-in-panel" aria-labelledby="walk-in-payments-title">
       <h1 id="walk-in-payments-title">Payments</h1>
-      <ReceiptList db={db}>
+      <ReceiptList db={db} initialCustomerId={initialCustomerId}>
         {receipt => (
           <li key={receipt.visitId}>
             <div>
