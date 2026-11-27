@@ -4,9 +4,36 @@ export function normalizeCustomer(id, data) {
   return { ...data, id, fullName: String(data.name || data.fullName || '') };
 }
 
+// This is a staff-facing lookup hint, not a replacement for the immutable Firestore document ID.
+// Increase the prefix if two records would show the same reference in the current directory.
+export function customerReference(id, customers = []) {
+  const fullId = String(id || '');
+  if (!fullId) return 'GYM-UNKNOWN';
+  let size = Math.min(6, fullId.length);
+  while (size < fullId.length && customers.some(customer =>
+    String(customer.id) !== fullId &&
+    String(customer.id).slice(0, size).toLowerCase() === fullId.slice(0, size).toLowerCase()
+  )) {
+    size = Math.min(size + 2, fullId.length);
+  }
+  return 'GYM-' + fullId.slice(0, size).toUpperCase();
+}
+
+export function phoneHint(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  return digits.length >= 4 ? 'Phone ending ' + digits.slice(-4) : 'No phone on file';
+}
+
 export function filterCustomers(customers, search) {
   const query = search.trim().toLowerCase();
-  return customers.filter(customer => !query || String(customer.id).toLowerCase() === query || customer.fullName.toLowerCase().includes(query));
+  const digits = query.replace(/\D/g, '');
+  return customers.filter(customer =>
+    !query ||
+    String(customer.id).toLowerCase() === query ||
+    customer.fullName.toLowerCase().includes(query) ||
+    customerReference(customer.id, customers).toLowerCase() === query ||
+    (digits.length >= 4 && String(customer.phone || '').replace(/\D/g, '').includes(digits))
+  );
 }
 
 export function customerPayload(form, createdAt) {
@@ -18,6 +45,26 @@ export function customerPayload(form, createdAt) {
   if (email.length > 254 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error('Enter a valid email address of at most 254 characters.');
   return { name, ...(phone ? { phone } : {}), ...(email ? { email } : {}), createdAt };
 }
+// SCRUM-35: Only profile fields are editable; the document ID, createdAt and visit history never change.
+export function customerUpdateFields(form) {
+  const payload = customerPayload(form, null);
+  return { name: payload.name, phone: payload.phone ?? '', email: payload.email ?? '' };
+}
+
+export async function updateCustomer(db, customerId, form) {
+  if (typeof customerId !== 'string' || !customerId.trim()) throw new Error('Customer ID is required.');
+  const updates = customerUpdateFields(form);
+  if (globalThis.navigator?.onLine === false) throw new Error('Reconnect before updating a customer.');
+  const customerRef = doc(db, 'customers', customerId);
+  await runTransaction(db, async transaction => {
+    const saved = await transaction.get(customerRef);
+    if (!saved.exists()) throw new Error('Customer record not found.');
+    if (saved.data().archivedAt) throw new Error('Archived customers cannot be edited.');
+    transaction.update(customerRef, updates);
+  });
+  return customerId;
+}
+
 export async function registerCustomer(db, form) {
   const payload = customerPayload(form, serverTimestamp());
   if (globalThis.navigator?.onLine === false) {

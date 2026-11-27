@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
-import { normalizeCustomer } from './customer-data';
+import { normalizeCustomer, updateCustomer } from './customer-data';
 import { archiveCustomer, checkInWalkIn, checkOutWalkIn } from './walk-in-data';
 import { CustomerDirectory } from './customer-directory';
 import { WalkInCheckIn } from './walk-in-check-in';
@@ -875,14 +875,18 @@ function StaffDashboard({ staffUser, onLogout }) {
               onViewOpenVisits={() => setActiveTab('open-visits')} />
           )}
           {activeTab === 'open-visits' && (
-            <OpenWalkIns db={db} result={openVisits} initialVisit={visit} onCheckout={input => checkOutWalkIn(db, staffUser.uid, input)} />
+            <OpenWalkIns db={db} result={openVisits} initialVisit={visit} customers={customers} initialCustomerId={customerId}
+              onCheckout={input => checkOutWalkIn(db, staffUser.uid, input)} />
           )}
-          {activeTab === 'payments' && <WalkInPayments db={db} />}
+          {activeTab === 'payments' && <WalkInPayments db={db} initialCustomerId={customerId} />}
           {activeTab === 'customers' && (
             <CustomerDirectory customers={customers} openVisits={openVisits}
               onNewWalkIn={() => setActiveTab('check-in')}
               onCheckIn={customer => setActiveTab('check-in', { customer })}
               onArchive={customerId => archiveCustomer(db, staffUser.uid, customerId)}
+               onUpdate={(customerId, form) => updateCustomer(db, customerId, form)}
+               onViewHistory={selectedId => setActiveTab('open-visits', { customerId: selectedId })}
+               onViewPayments={selectedId => setActiveTab('payments', { customerId: selectedId })}
               onCheckout={visit => setActiveTab('open-visits', { visit })} />
           )}
         </main>

@@ -75,6 +75,22 @@ service cloud.firestore {
         && !existsAfter(openVisitPath(customerId));
     }
 
+    // SCRUM-35: Only approved staff can edit current, non-archived customer profiles.
+    function validCustomerProfileUpdate() {
+      return !('archivedAt' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'phone', 'email'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && (!('phone' in request.resource.data)
+          || (request.resource.data.phone is string && request.resource.data.phone.size() <= 30))
+        && (!('email' in request.resource.data)
+          || (request.resource.data.email is string
+            && request.resource.data.email.size() <= 254
+            && (request.resource.data.email.size() == 0
+              || request.resource.data.email.matches('^[^@ ]+@[^@ ]+[.][^@ ]+$'))));
+    }
+
     match /customers/{customerId} {
       allow read: if isApprovedStaff();
       allow create: if isApprovedStaff()
@@ -88,7 +104,7 @@ service cloud.firestore {
         && (!('email' in request.resource.data)
             || (request.resource.data.email is string && request.resource.data.email.size() <= 254))
         && request.resource.data.createdAt == request.time;
-      allow update: if isApprovedStaff() && validArchive(customerId);
+      allow update: if isApprovedStaff() && (validArchive(customerId) || validCustomerProfileUpdate());
       allow delete: if false;
     }
   }

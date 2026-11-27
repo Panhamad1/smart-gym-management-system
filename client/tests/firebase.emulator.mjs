@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator, collection, addDoc, doc, getDocFromServer, getDocsFromServer, serverTimestamp, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { filterCustomers, normalizeCustomer, registerCustomer } from '../src/customer-data.js';
+import { filterCustomers, normalizeCustomer, registerCustomer, updateCustomer } from '../src/customer-data.js';
 import { archiveCustomer, checkInWalkIn, checkOutWalkIn } from '../src/walk-in-data.js';
 
 const projectId = 'demo-smart-gym';
@@ -54,16 +54,35 @@ test('approved staff save distinct same-name records that a fresh client can fin
   const records = snapshot.docs.map(doc => normalizeCustomer(doc.id, doc.data()));
   assert.equal(filterCustomers(records, first)[0].fullName, name);
   assert.equal(filterCustomers(records, name.toUpperCase()).length, 2);
-  await assert.rejects(updateDoc(doc(customers, first), { name: 'Edited' }), { code: 'permission-denied' });
+  const before = (await getDocFromServer(doc(customers, first))).data();
+  await updateCustomer(customers.firestore, first, {
+    fullName: name + ' Updated', phone: '012345678', email: 'test@example.com'
+  });
+  const refreshed = await getDocFromServer(doc(firestoreFor(t, approved), first));
+  assert.equal(refreshed.id, first);
+  assert.equal(refreshed.data().name, name + ' Updated');
+  assert.equal(refreshed.data().phone, '012345678');
+  assert.equal(refreshed.data().email, 'test@example.com');
+  assert.equal(refreshed.data().createdAt.toMillis(), before.createdAt.toMillis());
+  assert.equal((await getDocFromServer(doc(customers, second))).data().name, name);
+  await assert.rejects(updateDoc(doc(customers, first), { createdAt: serverTimestamp() }), { code: 'permission-denied' });
+  await assert.rejects(updateDoc(doc(customers, first), { role: 'administrator' }), { code: 'permission-denied' });
+  await assert.rejects(updateDoc(doc(customers, first), { name: '' }), { code: 'permission-denied' });
+  await assert.rejects(updateDoc(doc(customers, first), { email: 'not-an-email' }), { code: 'permission-denied' });
+  await assert.rejects(updateDoc(doc(customers, first), { phone: 'x'.repeat(31) }), { code: 'permission-denied' });
   await assert.rejects(addDoc(customers, { name: '', createdAt: serverTimestamp() }), { code: 'permission-denied' });
 });
 
 test('signed-out and unapproved clients cannot read or write customer records', async t => {
+  const approvedDb = firestoreFor(t, 'emulator-approved-staff').firestore;
+  const protectedCustomerId = await registerCustomer(approvedDb, { fullName: 'Protected', phone: '', email: '' });
   for (const uid of [undefined, 'unapproved']) {
     const customers = firestoreFor(t, uid);
     await assert.rejects(getDocsFromServer(customers), { code: 'permission-denied' });
     const form = { fullName: 'Test customer', phone: '', email: '' };
     await assert.rejects(registerCustomer(customers.firestore, form), { code: 'permission-denied' });
+    await assert.rejects(updateCustomer(customers.firestore, protectedCustomerId,
+      { fullName: 'Intruder', phone: '', email: '' }), { code: 'permission-denied' });
   }
 });
 
@@ -125,6 +144,8 @@ test('archiving is blocked during an open visit and preserves the completed rece
   assert.equal((await getDocFromServer(doc(db, 'walkInReceipts', visit.visitId))).data().status, 'paid');
   await assert.rejects(checkInWalkIn(db, approvedStaff, { customerId: visit.customerId }), /archived/);
   await assert.rejects(deleteDoc(customerRef), { code: 'permission-denied' });
+  await assert.rejects(updateCustomer(db, visit.customerId,
+    { fullName: 'Archived Test Changed', phone: '', email: '' }), /Archived customers cannot be edited/);
 });
 
 test('a new walk-in saves a customer and an open visit that survive a fresh client', async t => {
@@ -212,4 +233,26 @@ test('Firestore requires a matching $2 USD receipt and open-visit deletion in th
     await assert.rejects(getDocsFromServer(collection(unauthorized, 'walkInReceipts')), { code: 'permission-denied' });
     await assert.rejects(checkInWalkIn(unauthorized, uid, { customerId }), { code: 'permission-denied' });
   }
+});
+
+test('profile updates do not rewrite existing visit snapshots or payment records', async t => {
+  const db = firestoreFor(t, approvedStaff).firestore;
+  const customerId = await registerCustomer(db, {
+    fullName: 'Same Name', phone: '012345678', email: ''
+  });
+  const { visitId } = await checkInWalkIn(db, approvedStaff, { customerId });
+  await updateCustomer(db, customerId, {
+    fullName: 'New Display Name', phone: '099988877', email: ''
+  });
+  const open = (await getDocFromServer(doc(db, 'openWalkIns', customerId))).data();
+  assert.equal(open.customerName, 'Same Name');
+  assert.equal(open.customerId, customerId);
+  await checkOutWalkIn(db, approvedStaff, { customerId, visitId, method: 'cash', paymentReceived: true });
+  const receipt = (await getDocFromServer(doc(db, 'walkInReceipts', visitId))).data();
+  assert.equal(receipt.customerId, customerId);
+  assert.equal(receipt.customerName, 'Same Name');
+  assert.equal((await getDocFromServer(doc(db, 'customers', customerId))).data().name, 'New Display Name');
+  await assert.rejects(updateCustomer(db, randomUUID(), {
+    fullName: 'Not found', phone: '', email: ''
+  }), /not found/);
 });

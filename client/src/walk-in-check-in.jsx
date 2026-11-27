@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { filterCustomers } from './customer-data';
+import { filterCustomers, customerReference, phoneHint } from './customer-data';
 import { walkInError } from './walk-in-data';
 
 const emptyCustomer = { fullName: '', phone: '', email: '' };
@@ -8,6 +8,7 @@ export function WalkInCheckIn({ customers, initialCustomer, onCheckIn, onViewOpe
   const [mode, setMode] = useState(initialCustomer ? 'existing' : 'new');
   const [search, setSearch] = useState(initialCustomer?.fullName ?? '');
   const [selectedCustomer, setSelectedCustomer] = useState(initialCustomer ?? null);
+  const [identityConfirmed, setIdentityConfirmed] = useState(false);
   const [form, setForm] = useState(emptyCustomer);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -15,6 +16,8 @@ export function WalkInCheckIn({ customers, initialCustomer, onCheckIn, onViewOpe
 
   function changeMode(nextMode) {
     setMode(nextMode);
+    setSelectedCustomer(null);
+    setIdentityConfirmed(false);
     setError('');
     setSuccess('');
   }
@@ -26,15 +29,21 @@ export function WalkInCheckIn({ customers, initialCustomer, onCheckIn, onViewOpe
       setError('Select the customer to check in.');
       return;
     }
+    if (mode === 'existing' && !identityConfirmed) {
+      setError('Confirm the customer identity before checking in.');
+      return;
+    }
     setSaving(true);
     setError('');
     setSuccess('');
     try {
       const customerName = mode === 'new' ? form.fullName.trim() : selectedCustomer.fullName;
-      await onCheckIn(mode === 'new' ? { form } : { customerId: selectedCustomer.id });
-      setSuccess(customerName + ' checked in.');
+      const result = await onCheckIn(mode === 'new' ? { form } : { customerId: selectedCustomer.id });
+      const reference = customerReference(result?.customerId || selectedCustomer?.id, customers);
+      setSuccess(customerName + ' checked in. Customer reference: ' + reference + '.');
       setForm(emptyCustomer);
       setSelectedCustomer(null);
+      setIdentityConfirmed(false);
       setSearch('');
     } catch (failure) {
       setError(walkInError(failure));
@@ -56,24 +65,42 @@ export function WalkInCheckIn({ customers, initialCustomer, onCheckIn, onViewOpe
         <fieldset disabled={saving}>
           {mode === 'existing' ? (
             <>
-              <label htmlFor="walk-in-customer-search">Customer name or ID</label>
+              <label htmlFor="walk-in-customer-search">Search by name, phone, ID, or customer reference</label>
               <input id="walk-in-customer-search" value={search} onChange={event => {
                 setSearch(event.target.value);
                 setSelectedCustomer(null);
+                setIdentityConfirmed(false);
               }} />
               {selectedCustomer ? (
-                <p>Selected: <strong>{selectedCustomer.fullName}</strong></p>
+                <div className="walk-in-identity-confirmation">
+                  <p>Selected: <strong>{selectedCustomer.fullName}</strong></p>
+                  <p>Customer reference: <strong>{customerReference(selectedCustomer.id, customers)}</strong></p>
+                  <p>{phoneHint(selectedCustomer.phone)}</p>
+                  <label>
+                    <input type="checkbox" checked={identityConfirmed}
+                      onChange={event => setIdentityConfirmed(event.target.checked)} />
+                    I confirmed this is the correct customer using their contact details or customer reference.
+                  </label>
+                  <button type="button" onClick={() => { setSelectedCustomer(null); setIdentityConfirmed(false); }}>
+                    Choose another customer
+                  </button>
+                  {!selectedCustomer.phone && <p>Without a phone on file, ask for their reference or other reliable details. If unsure, do not reuse someone else's record.</p>}
+                </div>
               ) : search.trim() && (
-                <ul className="walk-in-customer-results">
-                  {matches.length === 0 && <li>No matching customers.</li>}
-                  {matches.map(customer => (
-                    <li key={customer.id}>
-                      <button type="button" onClick={() => setSelectedCustomer(customer)}>
-                        <strong>{customer.fullName}</strong><small>{customer.id}</small>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <p>Names may repeat. Check the phone ending and customer reference before selecting a record.</p>
+                  <ul className="walk-in-customer-results">
+                    {matches.length === 0 && <li>No matching customers.</li>}
+                    {matches.map(customer => (
+                      <li key={customer.id}>
+                        <button type="button" onClick={() => { setSelectedCustomer(customer); setIdentityConfirmed(false); }}>
+                          <strong>{customer.fullName}</strong>
+                          <small>{customerReference(customer.id, customers)} · {phoneHint(customer.phone)}</small>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
             </>
           ) : (
@@ -81,7 +108,7 @@ export function WalkInCheckIn({ customers, initialCustomer, onCheckIn, onViewOpe
               <label htmlFor="walk-in-name">Full name</label>
               <input id="walk-in-name" required maxLength={120} value={form.fullName}
                 onChange={event => setForm({ ...form, fullName: event.target.value })} />
-              <label htmlFor="walk-in-phone">Phone (optional)</label>
+              <label htmlFor="walk-in-phone">Phone (recommended for finding returning customers)</label>
               <input id="walk-in-phone" type="tel" maxLength={30} value={form.phone}
                 onChange={event => setForm({ ...form, phone: event.target.value })} />
               <label htmlFor="walk-in-email">Email (optional)</label>
@@ -89,7 +116,7 @@ export function WalkInCheckIn({ customers, initialCustomer, onCheckIn, onViewOpe
                 onChange={event => setForm({ ...form, email: event.target.value })} />
             </>
           )}
-          <button type="submit" className="walk-in-primary">{saving ? 'Saving…' : 'Check in'}</button>
+          <button type="submit" className="walk-in-primary" disabled={mode === 'existing' && (!selectedCustomer || !identityConfirmed)}>{saving ? 'Saving…' : 'Check in'}</button>
         </fieldset>
       </form>
       {error && <p className="walk-in-error" role="alert">{error}</p>}
