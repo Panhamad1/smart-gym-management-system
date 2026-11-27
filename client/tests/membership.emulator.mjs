@@ -171,7 +171,11 @@ test('unauthorized user cannot access memberships or subscription visits or forg
     for (const name of ['customerMemberships', 'subscriptions', 'subscriptionPayments', 'openMemberVisits', 'memberVisitHistory']) {
       await assert.rejects(getDocsFromServer(collection(other, name)), { code: 'permission-denied' });
     }
-    await assert.rejects(checkInMember(other, uid, customerId), { code: 'permission-denied' });
+    if (uid === undefined) {
+      await assert.rejects(checkInMember(other, uid, customerId), /Staff login required/);
+    } else {
+      await assert.rejects(checkInMember(other, uid, customerId), { code: 'permission-denied' });
+    }
     await assert.rejects(purchaseMembership(other, uid || 'fake', {
       customerId, planId, operationId: doc(collection(other, 'subscriptions')).id,
       method: 'cash', paymentReceived: true
