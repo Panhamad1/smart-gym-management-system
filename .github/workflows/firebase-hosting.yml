@@ -38,7 +38,7 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: Test Firestore staff permissions with local emulators
-        run: npx --yes firebase-tools@14 emulators:exec --project demo-smart-gym --config firebase.emulator.json --only auth,firestore "npm run test:emulator"
+        run: npx --yes firebase-tools@14 emulators:exec --project demo-smart-gym --config firebase.emulator.json --only auth,firestore "npm run test:emulator && npm run seed:memberships:emulator"
         working-directory: client
       - name: Deploy live site
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
