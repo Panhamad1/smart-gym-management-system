@@ -75,8 +75,8 @@ service cloud.firestore {
         && !existsAfter(openVisitPath(customerId));
     }
 
-    // SCRUM-35: permit only approved staff to edit existing non-archived profile fields.
-    // Keep document identity, createdAt and historical/archival metadata immutable.
+    // SCRUM-35: Only approved staff can update existing, non-archived customer profiles.
+    // The customer ID, creation timestamp, and historical records are immutable.
     function validCustomerProfileUpdate() {
       return !('archivedAt' in resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'phone', 'email'])
@@ -84,15 +84,12 @@ service cloud.firestore {
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 120
         && (!('phone' in request.resource.data)
-            || (request.resource.data.phone is string && request.resource.data.phone.size() <= 30))
+          || (request.resource.data.phone is string && request.resource.data.phone.size() <= 30))
         && (!('email' in request.resource.data)
-            || (request.resource.data.email is string
-                && request.resource.data.email.size() <= 254
-                && (request.resource.data.email.size() == 0
-                    || request.resource.data.email.matches('^[^ @]+@[^ @]+[.][^ @]+
-    }
-
-    match /customers/{customerId} {
+          || (request.resource.data.email is string
+            && request.resource.data.email.size() <= 254
+            && (request.resource.data.email.size() == 0
+              || request.resource.data.email.matches('^[^@ ]+@[^@ ]+[.][^@ ]+
       allow read: if isApprovedStaff();
       allow create: if isApprovedStaff()
         && request.resource.data.keys().hasOnly(['name', 'phone', 'email', 'createdAt'])
@@ -126,7 +123,7 @@ service cloud.firestore {
         && (!('email' in request.resource.data)
             || (request.resource.data.email is string && request.resource.data.email.size() <= 254))
         && request.resource.data.createdAt == request.time;
-      allow update: if isApprovedStaff() && (validArchive(customerId) || validCustomerProfileUpdate());
+      allow update: if isApprovedStaff() && validArchive(customerId);
       allow delete: if false;
     }
   }
