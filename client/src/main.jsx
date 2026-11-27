@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
-import { normalizeCustomer } from './customer-data';
+import { normalizeCustomer, updateCustomer } from './customer-data';
 import { archiveCustomer, checkInWalkIn, checkOutWalkIn } from './walk-in-data';
 import { CustomerDirectory } from './customer-directory';
 import { WalkInCheckIn } from './walk-in-check-in';
@@ -883,6 +883,7 @@ function StaffDashboard({ staffUser, onLogout }) {
               onNewWalkIn={() => setActiveTab('check-in')}
               onCheckIn={customer => setActiveTab('check-in', { customer })}
               onArchive={customerId => archiveCustomer(db, staffUser.uid, customerId)}
+               onUpdate={(customerId, form) => updateCustomer(db, customerId, form)}
               onCheckout={visit => setActiveTab('open-visits', { visit })} />
           )}
         </main>
