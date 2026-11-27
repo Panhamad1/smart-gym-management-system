@@ -45,6 +45,26 @@ export function customerPayload(form, createdAt) {
   if (email.length > 254 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error('Enter a valid email address of at most 254 characters.');
   return { name, ...(phone ? { phone } : {}), ...(email ? { email } : {}), createdAt };
 }
+// SCRUM-35: Only profile fields are editable; the document ID, createdAt and visit history never change.
+export function customerUpdateFields(form) {
+  const payload = customerPayload(form, null);
+  return { name: payload.name, phone: payload.phone ?? '', email: payload.email ?? '' };
+}
+
+export async function updateCustomer(db, customerId, form) {
+  if (typeof customerId !== 'string' || !customerId.trim()) throw new Error('Customer ID is required.');
+  const updates = customerUpdateFields(form);
+  if (globalThis.navigator?.onLine === false) throw new Error('Reconnect before updating a customer.');
+  const customerRef = doc(db, 'customers', customerId);
+  await runTransaction(db, async transaction => {
+    const saved = await transaction.get(customerRef);
+    if (!saved.exists()) throw new Error('Customer record not found.');
+    if (saved.data().archivedAt) throw new Error('Archived customers cannot be edited.');
+    transaction.update(customerRef, updates);
+  });
+  return customerId;
+}
+
 export async function registerCustomer(db, form) {
   const payload = customerPayload(form, serverTimestamp());
   if (globalThis.navigator?.onLine === false) {
