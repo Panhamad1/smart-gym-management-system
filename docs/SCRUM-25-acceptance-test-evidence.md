@@ -25,6 +25,19 @@ GitHub Actions includes npm ci, npm run build, npm test, and Firebase Auth/Fires
 | Unified payments, attendance, and active/expired dashboard | Domain/UI source review; browser case pending | Pending browser |
 | Offline/error cases | Existing offline test and new forms | Pending browser/simulated errors |
 
+## Verified GitHub Actions result — 28 November 2026
+
+- **Run:** https://github.com/Panhamad1/smart-gym-management-system/actions/runs/46055475541
+- **Head commit tested:** `d433da30db028c7d864b02ece2765d383be34ca1`
+- **Outcome:** success (deploy job); the production deployment step was correctly skipped on this pull-request branch.
+- **Frontend:** `npm ci`, `npm run build` succeeded.
+- **Unit tests:** 19 passed, 0 failed.
+- **Firebase Auth/Firestore emulator integration tests:** 15 passed, 0 failed.
+- **Synthetic seed:** `npm run seed:memberships:emulator` ran successfully within the same emulator session. It created example monthly/yearly plans, two distinct same-name customers, a paid membership, a member visit with no new payment, and one $2 paid walk-in.
+- **Environment:** GitHub Actions Node.js 22, Java 21, Firebase emulator project `demo-smart-gym`. The tests did not touch live Firebase records.
+
+The test results above are real automated evidence; **not** a claim of live UI/browser acceptance, independent teammate approval, payment handling in production, or actual team sprint-review attendance.
+
 ## Actual results
 Record the latest test-run URL and pass/fail counts here only after CI finishes. Do not invent screenshots, customer interviews, teacher approval or test outcomes.
 
