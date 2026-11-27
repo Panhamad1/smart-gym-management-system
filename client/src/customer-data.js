@@ -20,19 +20,19 @@ export function customerReference(id, customers = []) {
 }
 
 export function phoneHint(phone) {
-  const digits = String(phone || '').replace(/\\D/g, '');
+  const digits = String(phone || '').replace(/\D/g, '');
   return digits.length >= 4 ? 'Phone ending ' + digits.slice(-4) : 'No phone on file';
 }
 
 export function filterCustomers(customers, search) {
   const query = search.trim().toLowerCase();
-  const digits = query.replace(/\\D/g, '');
+  const digits = query.replace(/\D/g, '');
   return customers.filter(customer =>
     !query ||
     String(customer.id).toLowerCase() === query ||
     customer.fullName.toLowerCase().includes(query) ||
     customerReference(customer.id, customers).toLowerCase() === query ||
-    (digits.length >= 4 && String(customer.phone || '').replace(/\\D/g, '').includes(digits))
+    (digits.length >= 4 && String(customer.phone || '').replace(/\D/g, '').includes(digits))
   );
 }
 
