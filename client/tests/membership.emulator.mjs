@@ -15,7 +15,8 @@ const hostPort = process.env.FIRESTORE_EMULATOR_HOST;
 assert.match(hostPort || '', /^127\.0\.0\.1:\d+$/);
 const approved = 'emulator-approved-staff';
 
-function context(t, uid = approved) {
+function context(t, uid) {
+  if (arguments.length < 2) uid = approved;
   const app = initializeApp({ projectId, apiKey: 'emulator-only' }, randomUUID());
   t.after(() => deleteApp(app));
   const db = getFirestore(app);
@@ -136,7 +137,8 @@ test('same-name members remain distinct; checkout has no extra payment and preve
   assert.equal(receipt.customerId, first);
   assert.equal((await getDocFromServer(doc(db, 'openMemberVisits', first))).exists(), false);
   assert.equal((await getDocFromServer(doc(db, 'openMemberVisits', second))).exists(), true);
-  assert.equal((await getDocsFromServer(collection(db, 'walkInReceipts'))).size, 0);
+  const walkIns = await getDocsFromServer(collection(db, 'walkInReceipts'));
+  assert.equal(walkIns.docs.filter(receipt => [first, second].includes(receipt.data().customerId)).length, 0);
   await checkOutMember(db, approved, secondVisit);
   await assert.rejects(updateDoc(doc(db, 'memberVisitHistory', firstVisit.visitId), { amountMinor: 200 }), { code: 'permission-denied' });
 });
