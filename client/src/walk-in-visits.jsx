@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { walkInError, walkInFee, walkInMethods } from './walk-in-data';
+import { customerReference, phoneHint } from './customer-data';
 import { cambodiaDate, cambodiaMidnight, dayAfter } from './cambodia-day';
 
 const dateFormat = new Intl.DateTimeFormat('en-GB', {
@@ -87,11 +88,12 @@ function RecordList({ result, empty, children }) {
   return <ul className="walk-in-records">{result.records.map(children)}</ul>;
 }
 
-export function OpenWalkIns({ db, result, initialVisit, onCheckout }) {
+export function OpenWalkIns({ db, result, initialVisit, onCheckout, customers = [] }) {
   const [showHistory, setShowHistory] = useState(false);
   const [selected, setSelected] = useState(initialVisit ?? null);
   const [method, setMethod] = useState('');
   const [paymentReceived, setPaymentReceived] = useState(false);
+  const [identityConfirmed, setIdentityConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -100,6 +102,7 @@ export function OpenWalkIns({ db, result, initialVisit, onCheckout }) {
     setSelected(visit);
     setMethod('');
     setPaymentReceived(false);
+    setIdentityConfirmed(false);
     setError('');
     setSuccess('');
   }
@@ -107,18 +110,26 @@ export function OpenWalkIns({ db, result, initialVisit, onCheckout }) {
   async function checkout(event) {
     event.preventDefault();
     if (saving) return;
+    if (!selected || !identityConfirmed) {
+      setError('Confirm which customer is checking out before recording payment.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
       await onCheckout({ ...selected, method, paymentReceived });
       setSuccess(selected.customerName + ' checked out. Payment recorded.');
       setSelected(null);
+      setIdentityConfirmed(false);
     } catch (failure) {
       setError(walkInError(failure));
     } finally {
       setSaving(false);
     }
   }
+
+  const selectedCustomer = customers.find(customer => customer.id === selected?.customerId);
+  const reference = selected ? customerReference(selected.customerId, customers) : '';
 
   return (
     <section className="walk-in-panel" aria-labelledby="open-walk-ins-title">
@@ -134,6 +145,8 @@ export function OpenWalkIns({ db, result, initialVisit, onCheckout }) {
           {selected && (
             <form className="walk-in-form" onSubmit={checkout}>
               <h2>Check out {selected.customerName}</h2>
+              <p>Customer reference: <strong>{reference}</strong> · {phoneHint(selectedCustomer?.phone)}</p>
+              <p>Ask the customer to confirm their reference or contact details, particularly if other people share the same name.</p>
               <p>Payment due {paymentAmount(walkInFee)} USD</p>
               <fieldset disabled={saving}>
                 <label htmlFor="walk-in-payment-method">Payment method</label>
@@ -142,12 +155,17 @@ export function OpenWalkIns({ db, result, initialVisit, onCheckout }) {
                   {Object.entries(walkInMethods).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
                 <label className="walk-in-confirm">
+                  <input type="checkbox" checked={identityConfirmed}
+                    onChange={event => setIdentityConfirmed(event.target.checked)} />
+                  I confirmed the correct customer for this checkout
+                </label>
+                <label className="walk-in-confirm">
                   <input type="checkbox" checked={paymentReceived} onChange={event => setPaymentReceived(event.target.checked)} />
                   I received the payment
                 </label>
                 <div className="walk-in-mode">
                   <button type="button" onClick={() => chooseVisit(null)}>Cancel</button>
-                  <button type="submit" className="walk-in-primary" disabled={!method || !paymentReceived}>
+                  <button type="submit" className="walk-in-primary" disabled={!method || !paymentReceived || !identityConfirmed}>
                     {saving ? 'Saving…' : 'Confirm paid checkout'}
                   </button>
                 </div>
@@ -158,7 +176,9 @@ export function OpenWalkIns({ db, result, initialVisit, onCheckout }) {
           <RecordList result={result} empty="No open walk-in visits.">
             {visit => (
               <li key={visit.visitId}>
-                <div><strong>{visit.customerName}</strong><small>Checked in {visitTime(visit.checkedInAt)}</small></div>
+                <div><strong>{visit.customerName}</strong>
+                  <small>{customerReference(visit.customerId, customers)} · {phoneHint(customers.find(customer => customer.id === visit.customerId)?.phone)}</small>
+                  <small>Checked in {visitTime(visit.checkedInAt)}</small></div>
                 <button type="button" disabled={saving} onClick={() => chooseVisit(visit)}>Check out</button>
               </li>
             )}
