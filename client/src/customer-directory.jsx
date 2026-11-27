@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { filterCustomers } from './customer-data';
+import { filterCustomers, customerReference, phoneHint } from './customer-data';
 import { visitTime } from './walk-in-visits';
 import { walkInError } from './walk-in-data';
 
@@ -59,7 +59,7 @@ export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckI
             All customers ({customers.length})
           </button>
         </div>
-        <input type="search" aria-label="Search customers by name or ID" placeholder="Search by name or ID"
+        <input type="search" aria-label="Search customers by name, phone, ID or reference" placeholder="Search by name, phone, or reference"
           value={search} onChange={event => setSearch(event.target.value)} />
       </div>
       {openVisits.error && (
@@ -83,13 +83,8 @@ export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckI
               <li key={customer.id}>
                 <div className="directory-identity">
                   <strong>{customer.fullName}</strong>
-                  {scope === 'all' && (
-                    <>
-                      {customer.phone && <small>{customer.phone}</small>}
-                      {customer.email && <small>{customer.email}</small>}
-                      <small>ID {customer.id}</small>
-                    </>
-                  )}
+                  <small>{customerReference(customer.id, customers)} · {phoneHint(customer.phone)}</small>
+                  {scope === 'all' && customer.email && <small>{customer.email}</small>}
                 </div>
                 <div className="directory-status">
                   {openVisits.records && (
