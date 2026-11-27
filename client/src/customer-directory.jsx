@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { filterCustomers, customerReference, phoneHint } from './customer-data';
 import { visitTime } from './walk-in-visits';
 import { walkInError } from './walk-in-data';
+import { CustomerEditor } from './customer-editor';
 
-export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckIn, onCheckout, onArchive }) {
+export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckIn, onCheckout, onArchive, onUpdate }) {
   const [scope, setScope] = useState('active');
   const [search, setSearch] = useState('');
   const [archiveTarget, setArchiveTarget] = useState(null);
+  const [editingTarget, setEditingTarget] = useState(null);
   const [archiving, setArchiving] = useState(false);
   const [archiveError, setArchiveError] = useState('');
   const [archiveSuccess, setArchiveSuccess] = useState('');
@@ -39,6 +41,10 @@ export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckI
         <button type="button" className="walk-in-primary" onClick={onNewWalkIn}>New walk-in</button>
       </div>
       {archiveSuccess && <p className="walk-in-success" role="status">{archiveSuccess}</p>}
+      {editingTarget && (
+        <CustomerEditor key={editingTarget.id} customer={editingTarget} customers={customers}
+          onSave={onUpdate} onCancel={() => setEditingTarget(null)} />
+      )}
       {archiveTarget && (
         <section className="walk-in-form" aria-labelledby="archive-customer-title">
           <h2 id="archive-customer-title">Archive {archiveTarget.fullName}?</h2>
@@ -98,9 +104,19 @@ export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckI
                     aria-label={(visit ? 'Check out ' : 'Check in ') + customer.fullName}>
                     {visit ? 'Check out' : 'Check in'}
                   </button>
+                  {scope === 'all' && (
+                    <button type="button" aria-label={'Edit details for ' + customer.fullName + ' ' + customerReference(customer.id, customers)}
+                      disabled={archiving} onClick={() => {
+                        setEditingTarget(customer);
+                        setArchiveTarget(null);
+                        setArchiveError('');
+                        setArchiveSuccess('');
+                      }}>Edit details</button>
+                  )}
                   {scope === 'all' && !visit && (
                     <button type="button" disabled={archiving} aria-label={'Archive ' + customer.fullName} onClick={() => {
                       setArchiveTarget(customer);
+                      setEditingTarget(null);
                       setArchiveError('');
                       setArchiveSuccess('');
                     }}>Archive</button>
