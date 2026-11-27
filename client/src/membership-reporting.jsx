@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { cambodiaDate } from './cambodia-day';
 import { customerReference, phoneHint } from './customer-data';
 import { checkOutMember } from './member-visits-data';
-import { countMembershipStatuses, subscriptionCustomerName, subscriptionError, usd } from './subscription-data';
+import { subscriptionCustomerName, subscriptionError, usd } from './subscription-data';
+export { dashboardReport } from './gym-reporting-data.js';
 
 function displayTime(timestamp) {
   return timestamp?.toDate ? new Intl.DateTimeFormat('en-GB', {
@@ -12,23 +13,6 @@ function displayTime(timestamp) {
 
 function visitDay(timestamp) {
   return timestamp?.toDate ? cambodiaDate(timestamp.toDate()) : '';
-}
-
-export function dashboardReport({ memberships, memberOpen, memberHistory, today, walkInToday, walkInOpen }) {
-  if ([memberships, memberOpen, memberHistory, walkInToday, walkInOpen].some(item => item == null)) {
-    return { active: null, expired: null, todayCheckIns: null, openVisits: null };
-  }
-  const statuses = countMembershipStatuses(memberships, today);
-  const recentMemberVisitIds = new Set(
-    [...memberOpen, ...memberHistory]
-      .filter(visit => visitDay(visit.checkedInAt) === today)
-      .map(visit => visit.visitId)
-  );
-  return {
-    active: statuses.active, expired: statuses.expired,
-    todayCheckIns: walkInToday + recentMemberVisitIds.size,
-    openVisits: walkInOpen + memberOpen.length
-  };
 }
 
 export function MemberOpenVisits({ db, staffId, customers, result }) {
