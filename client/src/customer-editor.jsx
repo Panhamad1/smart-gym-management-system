@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { customerReference } from './customer-data';
 
 // Profile changes are saved by Firestore transactions and allowed only by reviewed Security Rules.
-export function CustomerEditor({ customer, customers, onSave, onCancel }) {
+export function CustomerEditor({ customer, customers, onSave, onCancel, onViewHistory, onViewPayments }) {
   const [form, setForm] = useState({
     fullName: customer.fullName,
     phone: customer.phone || '',
@@ -33,8 +33,13 @@ export function CustomerEditor({ customer, customers, onSave, onCancel }) {
   return (
     <section className="walk-in-form" aria-labelledby="edit-customer-title">
       <h2 id="edit-customer-title">Edit customer details</h2>
-      <p><strong>{customer.fullName}</strong> · {customerReference(customer.id, customers)}</p>
+      <p><strong>{form.fullName.trim() || customer.fullName}</strong> · {customerReference(customer.id, customers)}</p>
+      <p><small>Permanent customer ID: {customer.id}</small></p>
       <p>Customer identity stays the same. Editing contact details will not change older visit or payment records.</p>
+      <div className="walk-in-mode">
+        <button type="button" onClick={() => onViewHistory(customer.id)}>View visit history</button>
+        <button type="button" onClick={() => onViewPayments(customer.id)}>View payment history</button>
+      </div>
       <form onSubmit={submit}>
         <fieldset disabled={saving}>
           <label htmlFor="edit-customer-name">Full name</label>
