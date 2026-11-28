@@ -85,7 +85,7 @@ export function MembershipPanel({ db, staffId, customers, plans, states, subscri
       });
       setMessage((result.duplicate ? 'Already recorded: ' : 'Recorded: ') + result.purpose +
         ' from ' + result.startDay + ' until ' + result.endDayExclusive +
-        ' (end day excluded). Payment: ' + usd(selectedPlan.amountMinor) + '.');
+        ' (end day excluded). Payment: ' + usd(result.amountMinor ?? selectedPlan.amountMinor) + '.');
       setOperationId(doc(collection(db, 'subscriptions')).id);
       setReceived(false); setMethod(''); setConfirmedIdentity(false);
     } catch (failure) { setError(subscriptionError(failure)); }
