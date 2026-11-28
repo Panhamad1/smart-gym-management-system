@@ -196,3 +196,69 @@ test('unauthorized user cannot access memberships or subscription visits or forg
   }), { code: 'permission-denied' });
   await checkOutMember(db, approved, walk);
 });
+
+test('two staff actions racing on a single member do not create duplicate open visits or checkout receipts', async t => {
+  const db = context(t);
+  const customerId = await customer(db, 'Concurrent member', '012345678');
+  const planId = await examplePlan(db);
+  const purchaseId = doc(collection(db, 'subscriptions')).id;
+  await purchaseMembership(db, approved, {
+    customerId, planId, operationId: purchaseId, method: 'cash', paymentReceived: true
+  });
+  const attempts = await Promise.allSettled([
+    checkInMember(db, approved, customerId),
+    checkInMember(db, approved, customerId)
+  ]);
+  const successful = attempts.filter(item => item.status === 'fulfilled');
+  const failed = attempts.filter(item => item.status === 'rejected');
+  assert.equal(successful.length, 1);
+  assert.equal(failed.length, 1);
+  const visit = successful[0].value;
+  const open = await getDocFromServer(doc(db, 'openMemberVisits', customerId));
+  assert.equal(open.data().visitId, visit.visitId);
+
+  const closing = await Promise.allSettled([
+    checkOutMember(db, approved, visit),
+    checkOutMember(db, approved, visit)
+  ]);
+  assert.equal(closing.filter(item => item.status === 'fulfilled').length, 1);
+  assert.equal(closing.filter(item => item.status === 'rejected').length, 1);
+  assert.equal((await getDocFromServer(doc(db, 'openMemberVisits', customerId))).exists(), false);
+  const receipt = await getDocFromServer(doc(db, 'memberVisitHistory', visit.visitId));
+  assert.equal(receipt.data().amountMinor, 0);
+  assert.equal((await getDocsFromServer(collection(db, 'subscriptionPayments')))
+    .docs.filter(item => item.data().customerId === customerId).length, 1);
+});
+
+test('two independent plan purchases for one customer serialize into non-overlapping periods', async t => {
+  const db = context(t);
+  const customerId = await customer(db, 'Concurrent renewal');
+  const planId = await examplePlan(db);
+  const ids = [
+    doc(collection(db, 'subscriptions')).id,
+    doc(collection(db, 'subscriptions')).id
+  ];
+  const results = await Promise.allSettled(ids.map(operationId =>
+    purchaseMembership(db, approved, {
+      customerId, planId, operationId, method: 'cash', paymentReceived: true,
+      expectedAmountMinor: 5000, expectedMonths: 1
+    })
+  ));
+  const successful = results.filter(item => item.status === 'fulfilled');
+  assert.ok(successful.length >= 1);
+  const subscriptions = [];
+  for (const id of ids) {
+    const sub = await getDocFromServer(doc(db, 'subscriptions', id));
+    const payment = await getDocFromServer(doc(db, 'subscriptionPayments', id));
+    assert.equal(sub.exists(), payment.exists(), 'subscription and payment must be atomic');
+    if (sub.exists()) subscriptions.push(sub.data());
+  }
+  assert.equal(subscriptions.length, successful.length);
+  if (subscriptions.length === 2) {
+    const periods = subscriptions.map(s => [s.startDay, s.endDayExclusive])
+      .sort((a, b) => a[0].localeCompare(b[0]));
+    assert.equal(periods[0][1], periods[1][0], 'renewal starts at previous expiry');
+  }
+  const state = await getDocFromServer(doc(db, 'customerMemberships', customerId));
+  assert.equal(state.exists(), true);
+});
