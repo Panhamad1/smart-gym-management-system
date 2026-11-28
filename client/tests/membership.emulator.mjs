@@ -90,9 +90,17 @@ test('atomic manual payment, renewal, historical pricing and idempotent operatio
   assert.equal(duplicate.duplicate, true);
   assert.equal((await getDocsFromServer(collection(db, 'subscriptionPayments'))).docs.filter(item => item.id === operationId).length, 1);
   await saveMembershipPlan(db, approved, { label: 'Monthly', months: 1, amountMinor: 6000, active: true }, planId);
+  const staleOperationId = doc(collection(db, 'subscriptions')).id;
+  await assert.rejects(purchaseMembership(db, approved, {
+    customerId, planId, operationId: staleOperationId, method: 'bank', paymentReceived: true,
+    expectedAmountMinor: 5000, expectedMonths: 1
+  }), /plan price or duration changed/i);
+  assert.equal((await getDocFromServer(doc(db, 'subscriptionPayments', staleOperationId))).exists(), false);
+  assert.equal((await getDocFromServer(doc(db, 'subscriptions', staleOperationId))).exists(), false);
   const renewId = doc(collection(db, 'subscriptions')).id;
   const renewal = await purchaseMembership(db, approved, {
-    customerId, planId, operationId: renewId, method: 'bank', paymentReceived: true
+    customerId, planId, operationId: renewId, method: 'bank', paymentReceived: true,
+    expectedAmountMinor: 6000, expectedMonths: 1
   });
   assert.equal(renewal.purpose, 'renewal');
   assert.equal(renewal.startDay, sale.endDayExclusive);
