@@ -902,6 +902,7 @@ function StaffDashboard({ staffUser, onLogout }) {
           {/* ========================================================= */}
           {activeTab === 'check-in' && (
             <WalkInCheckIn customers={customers} initialCustomer={customer} memberships={memberships.records || []}
+              membershipsReady={Array.isArray(memberships.records) && !memberships.error}
               onCheckIn={input => input.type === 'subscription'
                 ? checkInMember(db, staffUser.uid, input.customerId) : checkInWalkIn(db, staffUser.uid, input)}
               onViewOpenVisits={() => setActiveTab('open-visits')} />
