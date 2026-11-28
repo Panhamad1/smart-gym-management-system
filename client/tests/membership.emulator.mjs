@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { collection, connectFirestoreEmulator, deleteDoc, doc, getDocFromServer, getDocsFromServer,
-  getFirestore, setDoc, serverTimestamp, updateDoc, Timestamp } from 'firebase/firestore';
+  getFirestore, setDoc, serverTimestamp, updateDoc, Timestamp, writeBatch } from 'firebase/firestore';
 import { registerCustomer } from '../src/customer-data.js';
 import { saveMembershipPlan, purchaseMembership, membershipStatus, countMembershipStatuses } from '../src/subscription-data.js';
 import { checkInMember, checkOutMember } from '../src/member-visits-data.js';
 import { checkInWalkIn, archiveCustomer } from '../src/walk-in-data.js';
 import { cambodiaDate, cambodiaMidnight } from '../src/cambodia-day.js';
+import { addCalendarMonths } from '../src/subscription-domain.js';
 
 const projectId = 'demo-smart-gym';
 const hostPort = process.env.FIRESTORE_EMULATOR_HOST;
@@ -261,4 +262,61 @@ test('two independent plan purchases for one customer serialize into non-overlap
   }
   const state = await getDocFromServer(doc(db, 'customerMemberships', customerId));
   assert.equal(state.exists(), true);
+});
+
+test('approved staff cannot bypass the form to sell 10-year coverage on a one-month plan', async t => {
+  const db = context(t);
+  const customerId = await customer(db, 'Forged duration');
+  const planId = await examplePlan(db);
+  const purchaseId = doc(collection(db, 'subscriptions')).id;
+  const today = cambodiaDate();
+  const forgedEndDay = String(Number(today.slice(0, 4)) + 10) + today.slice(4);
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'subscriptions', purchaseId), {
+    customerId, planId, planName: 'Monthly', months: 1, amountMinor: 5000,
+    currency: 'USD', startDay: today, endDayExclusive: forgedEndDay,
+    purpose: 'purchase', recordedAt: serverTimestamp(), recordedBy: approved
+  });
+  batch.set(doc(db, 'subscriptionPayments', purchaseId), {
+    customerId, subscriptionId: purchaseId, planId, purpose: 'purchase', amountMinor: 5000,
+    currency: 'USD', method: 'cash', status: 'paid',
+    receivedAt: serverTimestamp(), recordedBy: approved
+  });
+  batch.set(doc(db, 'customerMemberships', customerId), {
+    customerId, coveredFromDay: today, paidThroughExclusive: forgedEndDay,
+    coveredFromAt: Timestamp.fromMillis(cambodiaMidnight(today)),
+    paidThroughAt: Timestamp.fromMillis(cambodiaMidnight(forgedEndDay)),
+    latestSubscriptionId: purchaseId, updatedAt: serverTimestamp(), updatedBy: approved
+  });
+  await assert.rejects(batch.commit(), { code: 'permission-denied' });
+  assert.equal((await getDocFromServer(doc(db, 'subscriptions', purchaseId))).exists(), false);
+  assert.equal((await getDocFromServer(doc(db, 'subscriptionPayments', purchaseId))).exists(), false);
+});
+
+test('approved staff cannot extend paid-through timestamp beyond the matching Cambodia date', async t => {
+  const db = context(t);
+  const customerId = await customer(db, 'Forged timestamp');
+  const planId = await examplePlan(db);
+  const purchaseId = doc(collection(db, 'subscriptions')).id;
+  const today = cambodiaDate();
+  const paidThroughExclusive = addCalendarMonths(today, 1);
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'subscriptions', purchaseId), {
+    customerId, planId, planName: 'Monthly', months: 1, amountMinor: 5000,
+    currency: 'USD', startDay: today, endDayExclusive: paidThroughExclusive,
+    purpose: 'purchase', recordedAt: serverTimestamp(), recordedBy: approved
+  });
+  batch.set(doc(db, 'subscriptionPayments', purchaseId), {
+    customerId, subscriptionId: purchaseId, planId, purpose: 'purchase', amountMinor: 5000,
+    currency: 'USD', method: 'cash', status: 'paid',
+    receivedAt: serverTimestamp(), recordedBy: approved
+  });
+  batch.set(doc(db, 'customerMemberships', customerId), {
+    customerId, coveredFromDay: today, paidThroughExclusive,
+    coveredFromAt: Timestamp.fromMillis(cambodiaMidnight(today)),
+    paidThroughAt: Timestamp.fromMillis(cambodiaMidnight(paidThroughExclusive) + 365 * 86400000),
+    latestSubscriptionId: purchaseId, updatedAt: serverTimestamp(), updatedBy: approved
+  });
+  await assert.rejects(batch.commit(), { code: 'permission-denied' });
+  assert.equal((await getDocFromServer(doc(db, 'customerMemberships', customerId))).exists(), false);
 });
