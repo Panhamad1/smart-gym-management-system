@@ -61,7 +61,8 @@ export async function saveMembershipPlan(db, staffId, input, planId = null) {
 }
 
 export async function purchaseMembership(db, staffId, {
-  customerId, planId, method, paymentReceived, operationId
+  customerId, planId, method, paymentReceived, operationId,
+  expectedAmountMinor = null, expectedMonths = null
 }) {
   if (!staffId) throw new Error('Staff login required.');
   if (!paymentReceived) throw new Error('Confirm receiving money before recording the membership.');
@@ -93,6 +94,12 @@ export async function purchaseMembership(db, staffId, {
     if (!planSnapshot.exists()) throw new Error('Membership plan not found.');
     const plan = { ...planSnapshot.data(), id: planRef.id };
     validatePlan(plan);
+    // A plan can be edited while staff collects cash/bank payment.
+    // Never record the new price if the staff confirmed payment for the old price.
+    if ((expectedAmountMinor !== null && expectedAmountMinor !== plan.amountMinor) ||
+        (expectedMonths !== null && expectedMonths !== plan.months)) {
+      throw new Error('The plan price or duration changed. Refresh plans and confirm the correct payment before retrying.');
+    }
     const today = cambodiaDate();
     const current = stateSnapshot.exists() ? stateSnapshot.data() : null;
     const alreadyCovered = current && current.paidThroughExclusive > today;
