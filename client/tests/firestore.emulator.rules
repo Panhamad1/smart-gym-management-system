@@ -18,6 +18,25 @@ service cloud.firestore {
       return /databases/$(database)/documents/openWalkIns/$(customerId);
     }
 
+    function planPath(planId) {
+      return /databases/$(database)/documents/membershipPlans/$(planId);
+    }
+    function membershipPath(customerId) {
+      return /databases/$(database)/documents/customerMemberships/$(customerId);
+    }
+    function subscriptionPath(subscriptionId) {
+      return /databases/$(database)/documents/subscriptions/$(subscriptionId);
+    }
+    function subscriptionPaymentPath(subscriptionId) {
+      return /databases/$(database)/documents/subscriptionPayments/$(subscriptionId);
+    }
+    function openMemberPath(customerId) {
+      return /databases/$(database)/documents/openMemberVisits/$(customerId);
+    }
+    function memberHistoryPath(visitId) {
+      return /databases/$(database)/documents/memberVisitHistory/$(visitId);
+    }
+
     function validCheckIn(data, customerId) {
       let customer = getAfter(customerPath(customerId)).data;
       return data.keys().hasOnly(['customerId', 'customerName', 'visitId', 'checkedInAt', 'checkedInBy'])
@@ -30,7 +49,8 @@ service cloud.firestore {
         && data.visitId is string && data.visitId.matches('^[A-Za-z0-9]{20}$')
         && !exists(receiptPath(data.visitId))
         && data.checkedInAt == request.time
-        && data.checkedInBy == request.auth.uid;
+        && data.checkedInBy == request.auth.uid
+        && !existsAfter(openMemberPath(customerId));
     }
 
     function validReceipt(data, visitId) {
@@ -72,7 +92,214 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['archivedAt', 'archivedBy'])
         && request.resource.data.archivedAt == request.time
         && request.resource.data.archivedBy == request.auth.uid
-        && !existsAfter(openVisitPath(customerId));
+        && !existsAfter(openVisitPath(customerId))
+        && !existsAfter(openMemberPath(customerId));
+    }
+
+    // SCRUM-35: Only approved staff can edit current, non-archived customer profiles.
+    function validCustomerProfileUpdate() {
+      return !('archivedAt' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'phone', 'email'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && (!('phone' in request.resource.data)
+          || (request.resource.data.phone is string && request.resource.data.phone.size() <= 30))
+        && (!('email' in request.resource.data)
+          || (request.resource.data.email is string
+            && request.resource.data.email.size() <= 254
+            && (request.resource.data.email.size() == 0
+              || request.resource.data.email.matches('^[^@ ]+@[^@ ]+[.][^@ ]+$'))));
+    }
+
+
+    // SCRUM-18: Only authorized staff can save plans; past sales keep a copied price.
+    function validPlan(data) {
+      return data.label is string && data.label.size() > 0 && data.label.size() <= 80
+        && data.months is int && data.months >= 1 && data.months <= 120
+        && data.amountMinor is int && data.amountMinor >= 0 && data.amountMinor <= 100000000
+        && data.currency == 'USD' && data.active is bool;
+    }
+
+    match /membershipPlans/{planId} {
+      allow read: if isApprovedStaff();
+      allow create: if isApprovedStaff()
+        && request.resource.data.keys().hasOnly(['label', 'months', 'amountMinor', 'currency', 'active', 'createdAt', 'createdBy'])
+        && request.resource.data.keys().hasAll(['label', 'months', 'amountMinor', 'currency', 'active', 'createdAt', 'createdBy'])
+        && validPlan(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isApprovedStaff()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['label', 'months', 'amountMinor', 'active', 'updatedAt', 'updatedBy'])
+        && validPlan(request.resource.data)
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // Cambodia is always UTC+07:00. A Firestore timestamp is the authoritative expiry boundary.
+    // Duration bounds rule out forged multi-year entitlements for a one-month plan.
+    // Exact calendar clipping is also enforced by the client date-domain tests.
+    function cambodiaStartOfDay(day) {
+      let parts = day.split('-');
+      return timestamp.date(int(parts[0]), int(parts[1]), int(parts[2])) - duration.value(7, 'h');
+    }
+
+    function validSubscription(data, subscriptionId) {
+      let plan = get(planPath(data.planId)).data;
+      let membership = getAfter(membershipPath(data.customerId)).data;
+      let payment = getAfter(subscriptionPaymentPath(subscriptionId)).data;
+      let customer = get(customerPath(data.customerId)).data;
+      return data.keys().hasOnly(['customerId', 'planId', 'planName', 'months', 'amountMinor', 'currency',
+                                  'startDay', 'endDayExclusive', 'purpose', 'recordedAt', 'recordedBy'])
+        && data.keys().hasAll(['customerId', 'planId', 'planName', 'months', 'amountMinor', 'currency',
+                               'startDay', 'endDayExclusive', 'purpose', 'recordedAt', 'recordedBy'])
+        && !('archivedAt' in customer)
+        && plan.active == true
+        && data.planName == plan.label
+        && data.months == plan.months
+        && data.amountMinor == plan.amountMinor
+        && data.currency == 'USD'
+        && data.startDay is string && data.startDay.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.endDayExclusive is string && data.endDayExclusive.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.startDay < data.endDayExclusive
+        && cambodiaStartOfDay(data.endDayExclusive) >=
+           cambodiaStartOfDay(data.startDay) + duration.value(data.months * 28, 'd')
+        && cambodiaStartOfDay(data.endDayExclusive) <=
+           cambodiaStartOfDay(data.startDay) + duration.value(data.months * 31, 'd')
+        && data.purpose in ['purchase', 'renewal']
+        && data.recordedAt == request.time
+        && data.recordedBy == request.auth.uid
+        && membership.customerId == data.customerId
+        && membership.latestSubscriptionId == subscriptionId
+        && membership.paidThroughExclusive == data.endDayExclusive
+        && membership.updatedAt == request.time
+        && payment.subscriptionId == subscriptionId
+        && payment.customerId == data.customerId
+        && payment.planId == data.planId
+        && payment.purpose == data.purpose
+        && payment.status == 'paid'
+        && payment.amountMinor == data.amountMinor;
+    }
+
+    function validSubscriptionPayment(data, subscriptionId) {
+      let sub = getAfter(subscriptionPath(subscriptionId)).data;
+      let plan = get(planPath(data.planId)).data;
+      return data.keys().hasOnly(['customerId', 'subscriptionId', 'planId', 'purpose', 'amountMinor',
+                                  'currency', 'method', 'status', 'receivedAt', 'recordedBy'])
+        && data.keys().hasAll(['customerId', 'subscriptionId', 'planId', 'purpose', 'amountMinor',
+                               'currency', 'method', 'status', 'receivedAt', 'recordedBy'])
+        && data.subscriptionId == subscriptionId
+        && data.customerId == sub.customerId && data.planId == sub.planId
+        && data.purpose == sub.purpose && data.purpose in ['purchase', 'renewal']
+        && data.amountMinor is int && data.amountMinor == sub.amountMinor
+        && data.amountMinor == plan.amountMinor
+        && data.currency == 'USD'
+        && data.status == 'paid'
+        && data.method in ['cash', 'bank']
+        && data.receivedAt == request.time
+        && data.recordedBy == request.auth.uid;
+    }
+
+    function validMembershipState(data, customerId) {
+      let sub = getAfter(subscriptionPath(data.latestSubscriptionId)).data;
+      let payment = getAfter(subscriptionPaymentPath(data.latestSubscriptionId)).data;
+      return data.keys().hasOnly(['customerId', 'coveredFromDay', 'paidThroughExclusive', 'coveredFromAt',
+                                  'paidThroughAt', 'latestSubscriptionId', 'updatedAt', 'updatedBy'])
+        && data.keys().hasAll(['customerId', 'coveredFromDay', 'paidThroughExclusive', 'coveredFromAt',
+                               'paidThroughAt', 'latestSubscriptionId', 'updatedAt', 'updatedBy'])
+        && data.customerId == customerId
+        && data.coveredFromDay is string && data.coveredFromDay.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.paidThroughExclusive is string && data.paidThroughExclusive.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.coveredFromDay < data.paidThroughExclusive
+        && data.coveredFromAt is timestamp && data.paidThroughAt is timestamp
+        && data.coveredFromAt < data.paidThroughAt
+        && data.coveredFromAt == cambodiaStartOfDay(data.coveredFromDay)
+        && data.paidThroughAt == cambodiaStartOfDay(data.paidThroughExclusive)
+        && data.latestSubscriptionId is string && data.latestSubscriptionId.matches('^[A-Za-z0-9]{20}$')
+        && sub.customerId == customerId
+        && sub.endDayExclusive == data.paidThroughExclusive
+        && payment.subscriptionId == data.latestSubscriptionId
+        && payment.status == 'paid'
+        && data.updatedAt == request.time
+        && data.updatedBy == request.auth.uid;
+    }
+
+    match /customerMemberships/{customerId} {
+      allow read: if isApprovedStaff();
+      allow create: if isApprovedStaff() && validMembershipState(request.resource.data, customerId)
+        && request.resource.data.coveredFromDay == getAfter(subscriptionPath(request.resource.data.latestSubscriptionId)).data.startDay;
+      allow update: if isApprovedStaff() && validMembershipState(request.resource.data, customerId)
+        && request.resource.data.latestSubscriptionId != resource.data.latestSubscriptionId
+        && request.resource.data.paidThroughExclusive > resource.data.paidThroughExclusive
+        && (request.resource.data.coveredFromDay == resource.data.coveredFromDay
+            || request.resource.data.coveredFromDay == getAfter(subscriptionPath(request.resource.data.latestSubscriptionId)).data.startDay);
+      allow delete: if false;
+    }
+
+    match /subscriptions/{subscriptionId} {
+      allow read: if isApprovedStaff();
+      allow create: if isApprovedStaff() && validSubscription(request.resource.data, subscriptionId);
+      allow update, delete: if false;
+    }
+
+    match /subscriptionPayments/{subscriptionId} {
+      allow read: if isApprovedStaff();
+      allow create: if isApprovedStaff() && validSubscriptionPayment(request.resource.data, subscriptionId);
+      allow update, delete: if false;
+    }
+
+    // SCRUM-21: active coverage is checked against server time (Cambodia boundary is stored as a timestamp).
+    function validMemberCheckIn(data, customerId) {
+      let state = get(membershipPath(customerId)).data;
+      let customer = get(customerPath(customerId)).data;
+      return data.keys().hasOnly(['customerId', 'customerName', 'visitId', 'subscriptionId', 'checkedInAt', 'checkedInBy'])
+        && data.keys().hasAll(['customerId', 'customerName', 'visitId', 'subscriptionId', 'checkedInAt', 'checkedInBy'])
+        && data.customerId == customerId
+        && !('archivedAt' in customer)
+        && data.customerName == (customer.get('name', '') != '' ? customer.name : customer.get('fullName', ''))
+        && data.visitId is string && data.visitId.matches('^[A-Za-z0-9]{20}$')
+        && data.subscriptionId == state.latestSubscriptionId
+        && request.time >= state.coveredFromAt
+        && request.time < state.paidThroughAt
+        && data.checkedInAt == request.time && data.checkedInBy == request.auth.uid
+        && !existsAfter(openVisitPath(customerId))
+        && !exists(memberHistoryPath(data.visitId));
+    }
+
+    function validMemberCheckout(data, visitId) {
+      let openPath = openMemberPath(data.customerId);
+      let visit = get(openPath).data;
+      return data.keys().hasOnly(['customerId', 'customerName', 'visitId', 'subscriptionId',
+                                  'checkedInAt', 'checkedInBy', 'checkedOutAt', 'checkedOutBy',
+                                  'amountMinor', 'currency', 'visitType'])
+        && data.keys().hasAll(['customerId', 'customerName', 'visitId', 'subscriptionId',
+                               'checkedInAt', 'checkedInBy', 'checkedOutAt', 'checkedOutBy',
+                               'amountMinor', 'currency', 'visitType'])
+        && data.visitId == visitId && data.visitId == visit.visitId
+        && data.customerId == visit.customerId
+        && data.customerName == visit.customerName
+        && data.subscriptionId == visit.subscriptionId
+        && data.checkedInAt == visit.checkedInAt
+        && data.checkedInBy == visit.checkedInBy
+        && data.checkedOutAt == request.time && data.checkedOutBy == request.auth.uid
+        && data.amountMinor == 0 && data.currency == 'USD' && data.visitType == 'subscription'
+        && !existsAfter(openPath);
+    }
+
+    match /openMemberVisits/{customerId} {
+      allow read: if isApprovedStaff();
+      allow create: if isApprovedStaff() && validMemberCheckIn(request.resource.data, customerId);
+      allow delete: if isApprovedStaff()
+        && getAfter(memberHistoryPath(resource.data.visitId)).data.customerId == customerId
+        && getAfter(memberHistoryPath(resource.data.visitId)).data.checkedOutAt == request.time;
+      allow update: if false;
+    }
+
+    match /memberVisitHistory/{visitId} {
+      allow read: if isApprovedStaff();
+      allow create: if isApprovedStaff() && validMemberCheckout(request.resource.data, visitId);
+      allow update, delete: if false;
     }
 
     match /customers/{customerId} {
@@ -88,7 +315,7 @@ service cloud.firestore {
         && (!('email' in request.resource.data)
             || (request.resource.data.email is string && request.resource.data.email.size() <= 254))
         && request.resource.data.createdAt == request.time;
-      allow update: if isApprovedStaff() && validArchive(customerId);
+      allow update: if isApprovedStaff() && (validArchive(customerId) || validCustomerProfileUpdate());
       allow delete: if false;
     }
   }

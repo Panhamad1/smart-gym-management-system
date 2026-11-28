@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
-import { filterCustomers } from './customer-data';
+import { filterCustomers, customerReference, phoneHint } from './customer-data';
 import { visitTime } from './walk-in-visits';
 import { walkInError } from './walk-in-data';
+import { CustomerEditor } from './customer-editor';
 
-export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckIn, onCheckout, onArchive }) {
+export function CustomerDirectory({ customers, openVisits, memberOpen, onNewWalkIn, onCheckIn, onCheckout, onArchive, onUpdate, onViewHistory, onViewPayments }) {
   const [scope, setScope] = useState('active');
   const [search, setSearch] = useState('');
   const [archiveTarget, setArchiveTarget] = useState(null);
+  const [editingTarget, setEditingTarget] = useState(null);
   const [archiving, setArchiving] = useState(false);
   const [archiveError, setArchiveError] = useState('');
   const [archiveSuccess, setArchiveSuccess] = useState('');
-  const visits = new Map(openVisits.records?.map(visit => [visit.customerId, visit]));
+  const visits = new Map([...(openVisits.records || []), ...(memberOpen.records || [])].map(visit => [visit.customerId, visit]));
   const visibleCustomers = filterCustomers(customers, search)
     .filter(customer => scope === 'all' || visits.has(customer.id));
 
@@ -19,6 +21,7 @@ export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckI
     setArchiving(true);
     setArchiveError('');
     try {
+      if (visits.has(archiveTarget.id)) throw new Error('Check out this customer first.');
       await onArchive(archiveTarget.id);
       setArchiveSuccess(archiveTarget.fullName + ' archived.');
       setArchiveTarget(null);
@@ -39,6 +42,11 @@ export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckI
         <button type="button" className="walk-in-primary" onClick={onNewWalkIn}>New walk-in</button>
       </div>
       {archiveSuccess && <p className="walk-in-success" role="status">{archiveSuccess}</p>}
+      {editingTarget && (
+        <CustomerEditor key={editingTarget.id} customer={customers.find(current => current.id === editingTarget.id) || editingTarget}
+          customers={customers} onSave={onUpdate} onCancel={() => setEditingTarget(null)}
+          onViewHistory={onViewHistory} onViewPayments={onViewPayments} />
+      )}
       {archiveTarget && (
         <section className="walk-in-form" aria-labelledby="archive-customer-title">
           <h2 id="archive-customer-title">Archive {archiveTarget.fullName}?</h2>
@@ -53,23 +61,23 @@ export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckI
       <div className="directory-controls">
         <div className="walk-in-mode" role="group" aria-label="Filter customers">
           <button type="button" aria-pressed={scope === 'active'} onClick={() => setScope('active')}>
-            In gym{openVisits.records && ` (${openVisits.records.length})`}
+            In gym{openVisits.records && memberOpen.records && ` (${openVisits.records.length + memberOpen.records.length})`}
           </button>
           <button type="button" aria-pressed={scope === 'all'} onClick={() => setScope('all')}>
             All customers ({customers.length})
           </button>
         </div>
-        <input type="search" aria-label="Search customers by name or ID" placeholder="Search by name or ID"
+        <input type="search" aria-label="Search customers by name, phone, ID or reference" placeholder="Search by name, phone, or reference"
           value={search} onChange={event => setSearch(event.target.value)} />
       </div>
-      {openVisits.error && (
+      {(openVisits.error || memberOpen.error) && (
         <div className="directory-controls">
-          <p className="walk-in-error" role="alert">{openVisits.error}</p>
+          <p className="walk-in-error" role="alert">{openVisits.error || memberOpen.error}</p>
           <button type="button" onClick={openVisits.retry}>Retry visit status</button>
         </div>
       )}
-      {!openVisits.records && !openVisits.error && <p role="status">Loading visit status…</p>}
-      {(scope === 'all' || openVisits.records) && visibleCustomers.length === 0 && (
+      {(!openVisits.records || !memberOpen.records) && !openVisits.error && !memberOpen.error && <p role="status">Loading visit status…</p>}
+      {(scope === 'all' || (openVisits.records && memberOpen.records)) && visibleCustomers.length === 0 && (
         <p className="directory-empty">
           {search.trim() ? 'No customers match your search.'
             : scope === 'active' ? 'No customers are checked in.' : 'No customers have been registered.'}
@@ -83,19 +91,14 @@ export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckI
               <li key={customer.id}>
                 <div className="directory-identity">
                   <strong>{customer.fullName}</strong>
-                  {scope === 'all' && (
-                    <>
-                      {customer.phone && <small>{customer.phone}</small>}
-                      {customer.email && <small>{customer.email}</small>}
-                      <small>ID {customer.id}</small>
-                    </>
-                  )}
+                  <small>{customerReference(customer.id, customers)} · {phoneHint(customer.phone)}</small>
+                  {scope === 'all' && customer.email && <small>{customer.email}</small>}
                 </div>
                 <div className="directory-status">
                   {openVisits.records && (
                     <span className={visit ? 'directory-in-gym' : undefined}>{visit ? 'In gym' : 'Not checked in'}</span>
                   )}
-                  {visit && <small>Checked in {visitTime(visit.checkedInAt)}</small>}
+                  {visit && <small>{visit.subscriptionId ? 'Subscription covered' : 'Walk-in'} · Checked in {visitTime(visit.checkedInAt)}</small>}
                 </div>
                 {openVisits.records && (
                   <div className="walk-in-mode">
@@ -103,9 +106,19 @@ export function CustomerDirectory({ customers, openVisits, onNewWalkIn, onCheckI
                     aria-label={(visit ? 'Check out ' : 'Check in ') + customer.fullName}>
                     {visit ? 'Check out' : 'Check in'}
                   </button>
+                  {scope === 'all' && (
+                    <button type="button" aria-label={'Edit details for ' + customer.fullName + ' ' + customerReference(customer.id, customers)}
+                      disabled={archiving} onClick={() => {
+                        setEditingTarget(customer);
+                        setArchiveTarget(null);
+                        setArchiveError('');
+                        setArchiveSuccess('');
+                      }}>Edit details</button>
+                  )}
                   {scope === 'all' && !visit && (
                     <button type="button" disabled={archiving} aria-label={'Archive ' + customer.fullName} onClick={() => {
                       setArchiveTarget(customer);
+                      setEditingTarget(null);
                       setArchiveError('');
                       setArchiveSuccess('');
                     }}>Archive</button>
