@@ -80,7 +80,8 @@ export function MembershipPanel({ db, staffId, customers, plans, states, subscri
     try {
       const result = await purchaseMembership(db, staffId, {
         customerId: selectedCustomer.id, planId: selectedPlan.id,
-        method, paymentReceived: received, operationId
+        method, paymentReceived: received, operationId,
+        expectedAmountMinor: selectedPlan.amountMinor, expectedMonths: selectedPlan.months
       });
       setMessage((result.duplicate ? 'Already recorded: ' : 'Recorded: ') + result.purpose +
         ' from ' + result.startDay + ' until ' + result.endDayExclusive +
