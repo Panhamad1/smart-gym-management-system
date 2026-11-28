@@ -25,6 +25,14 @@ export function activeMembership(state, today = cambodiaDate()) {
   return membershipStatus(state, today) === 'active';
 }
 
+// Prefer free covered entry for current members. Names/phones never decide membership identity.
+export function preferredVisitType(customerId, memberships, today = cambodiaDate()) {
+  const entitlement = Array.isArray(memberships)
+    ? memberships.find(item => item.customerId === customerId)
+    : null;
+  return membershipStatus(entitlement, today) === 'active' ? 'subscription' : 'walk-in';
+}
+
 export function countMembershipStatuses(states, today = cambodiaDate()) {
   const result = { active: 0, expired: 0, upcoming: 0, inactive: 0 };
   for (const item of states || []) {
