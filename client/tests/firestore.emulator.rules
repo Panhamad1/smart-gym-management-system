@@ -137,6 +137,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Cambodia is always UTC+07:00. A Firestore timestamp is the authoritative expiry boundary.
+    // Duration bounds rule out forged multi-year entitlements for a one-month plan.
+    // Exact calendar clipping is also enforced by the client date-domain tests.
+    function cambodiaStartOfDay(day) {
+      let parts = day.split('-');
+      return timestamp.date(int(parts[0]), int(parts[1]), int(parts[2])) - duration.value(7, 'h');
+    }
+
     function validSubscription(data, subscriptionId) {
       let plan = get(planPath(data.planId)).data;
       let membership = getAfter(membershipPath(data.customerId)).data;
@@ -155,6 +163,10 @@ service cloud.firestore {
         && data.startDay is string && data.startDay.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
         && data.endDayExclusive is string && data.endDayExclusive.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
         && data.startDay < data.endDayExclusive
+        && cambodiaStartOfDay(data.endDayExclusive) >=
+           cambodiaStartOfDay(data.startDay) + duration.value(data.months * 28, 'd')
+        && cambodiaStartOfDay(data.endDayExclusive) <=
+           cambodiaStartOfDay(data.startDay) + duration.value(data.months * 31, 'd')
         && data.purpose in ['purchase', 'renewal']
         && data.recordedAt == request.time
         && data.recordedBy == request.auth.uid
@@ -202,6 +214,8 @@ service cloud.firestore {
         && data.coveredFromDay < data.paidThroughExclusive
         && data.coveredFromAt is timestamp && data.paidThroughAt is timestamp
         && data.coveredFromAt < data.paidThroughAt
+        && data.coveredFromAt == cambodiaStartOfDay(data.coveredFromDay)
+        && data.paidThroughAt == cambodiaStartOfDay(data.paidThroughExclusive)
         && data.latestSubscriptionId is string && data.latestSubscriptionId.matches('^[A-Za-z0-9]{20}$')
         && sub.customerId == customerId
         && sub.endDayExclusive == data.paidThroughExclusive
