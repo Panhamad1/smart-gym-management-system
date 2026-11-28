@@ -20,6 +20,14 @@ The web application signs users in with Firebase email/password and uses Auth si
 - client/tests/firestore.emulator.rules — **synthetic emulator-only** policy.
 - server/src/index.js and server/.env.example — legacy backend reference (live React site does not depend on it).
 
+## Additional emulator security findings — 28 November 2026
+
+- New Firestore rule `cambodiaStartOfDay` binds stored entitlement `coveredFromAt` and `paidThroughAt` to Cambodia midnight, rather than trusting arbitrarily provided timestamps. This prevents a client from showing an expiry in December but secretly granting another year through a forged timestamp.
+- Purchase-period dates must represent a duration between **28 and 31 days per calendar month of the plan**, preventing a forged 10-year entitlement for a one-month purchase. The client calculates the **exact** calendar-month expiry and tests February/January boundaries. **Important limitation:** a 28–31-day bound is not an exact equivalent to all calendar-month rules. Stronger server-enforced expiry calculation/immutable money accounting would require an approved trusted backend, not just relying on staff-entered client data.
+- Emulator regression tests deliberately bypass the React form to attempt the above writes as an **approved staff UID**. Rejection is verified in GitHub Actions. Synthetic emulator rules are not published to production.
+- For returning customers, the staff UI defaults to a covered entry when an active membership is confirmed and prevents paid check-in until the entitlement collection has loaded. Staff can deliberately choose paid walk-in only with verified membership status.
+- Check the newest PR #16 head run before claiming final evidence. As before, actual production Firestore policy review and authorized/unapproved signed-in browser checks remain mandatory.
+
 ## Real production release blockers
 - Export the live Firestore rules and identify the actual approved staff UID allowlist.
 - Confirm authorized staff sign-in and denial for unapproved test users on the deployed site.
