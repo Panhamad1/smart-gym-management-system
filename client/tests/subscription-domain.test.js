@@ -1,4 +1,6 @@
 import test from 'node:test';
+import { preferredVisitType } from '../src/subscription-data.js';
+
 import assert from 'node:assert/strict';
 import {
   DEFAULT_MEMBERSHIP_PLANS, validateCambodiaDay, addCalendarMonths,
@@ -58,4 +60,18 @@ test('invalid plans, missing payment method, and invalid calendar days are rejec
 test('inactive subscription does not cover a gym visit', () => {
   const sub = createSubscriptionPeriod('2026-11-01', monthly);
   assert.equal(visitIsCoveredBySubscription([{ ...sub, cancelled: true }], '2026-11-15'), false);
+});
+
+test('member check-in defaults to no extra fee only for the exact active customer ID', () => {
+  const states = [
+    { customerId: 'person-a', coveredFromDay: '2026-11-01', paidThroughExclusive: '2026-12-01' },
+    { customerId: 'person-b', coveredFromDay: '2026-10-01', paidThroughExclusive: '2026-11-01' },
+    { customerId: 'person-c', coveredFromDay: '2026-12-01', paidThroughExclusive: '2027-01-01' }
+  ];
+  const today = '2026-11-28';
+  assert.equal(preferredVisitType('person-a', states, today), 'subscription');
+  assert.equal(preferredVisitType('person-b', states, today), 'walk-in');
+  assert.equal(preferredVisitType('person-c', states, today), 'walk-in');
+  assert.equal(preferredVisitType('same-name-different-ID', states, today), 'walk-in');
+  assert.equal(preferredVisitType('person-a', [], today), 'walk-in');
 });
